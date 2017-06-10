@@ -83,7 +83,7 @@ pub enum RecordError<'a> {
 }
 impl<'a> Parsed for Record<'a> {
     type Raw = RawRecord<'a>;
-    type Parsed = ParsedRecord;
+    type Parsed = ParsedRecord<'a>;
     type Field = RecordField;
     type Err = RecordError<'a>;
 
@@ -95,48 +95,49 @@ impl<'a> Parsed for Record<'a> {
         use self::RawRecord as R;
         use self::ParsedRecord as P;
         Ok(match *raw {
-            R::FileHeader(ref fh) => {
-                P::FileHeader(
-                    FileHeader::parse(fh).map_err(|e| PE::Error(F::FileHeader, E::FileHeader(e)))?
-                )
-            }
-            R::GroupHeader(ref gh) => {
-                P::GroupHeader(
-                    GroupHeader::parse(gh)
-                        .map_err(|e| PE::Error(F::GroupHeader, E::GroupHeader(e)))?
-                )
-            }
-            R::AccountIdent(ref ai) => {
-                P::AccountIdent(
-                    AccountIdent::parse(ai)
-                        .map_err(|e| PE::Error(F::AccountIdent, E::AccountIdent(e)))?
-                )
-            }
-            R::TransactionDetail(ref td) => {
-                P::TransactionDetail(
-                    TransactionDetail::parse(td)
-                        .map_err(|e| PE::Error(F::TransactionDetail, E::TransactionDetail(e)))?
-                )
-            }
-            R::AccountTrailer(ref at) => {
-                P::AccountTrailer(
-                    AccountTrailer::parse(at)
-                        .map_err(|e| PE::Error(F::AccountTrailer, E::AccountTrailer(e)))?
-                )
-            }
-            R::GroupTrailer(ref gt) => {
-                P::GroupTrailer(
-                    GroupTrailer::parse(gt)
-                        .map_err(|e| PE::Error(F::GroupTrailer, E::GroupTrailer(e)))?
-                )
-            }
-            R::FileTrailer(ref ft) => {
-                P::FileTrailer(
-                    FileTrailer::parse(ft)
-                        .map_err(|e| PE::Error(F::FileTrailer, E::FileTrailer(e)))?
-                )
-            }
-        })
+               R::FileHeader(ref fh) => {
+                   P::FileHeader(FileHeader::parse(fh)
+                                     .map_err(|e| PE::Error(F::FileHeader, E::FileHeader(e)))?)
+               }
+               R::GroupHeader(ref gh) => {
+                   P::GroupHeader(GroupHeader::parse(gh)
+                                      .map_err(|e| {
+                                                   PE::Error(F::GroupHeader, E::GroupHeader(e))
+                                               })?)
+               }
+               R::AccountIdent(ref ai) => {
+                   P::AccountIdent(AccountIdent::parse(ai)
+                                       .map_err(|e| {
+                                                    PE::Error(F::AccountIdent, E::AccountIdent(e))
+                                                })?)
+               }
+               R::TransactionDetail(ref td) => {
+                   P::TransactionDetail(TransactionDetail::parse(td)
+                                            .map_err(|e| {
+                                                         PE::Error(F::TransactionDetail,
+                                                                   E::TransactionDetail(e))
+                                                     })?)
+               }
+               R::AccountTrailer(ref at) => {
+                   P::AccountTrailer(AccountTrailer::parse(at)
+                                         .map_err(|e| {
+                                                      PE::Error(F::AccountTrailer,
+                                                                E::AccountTrailer(e))
+                                                  })?)
+               }
+               R::GroupTrailer(ref gt) => {
+                   P::GroupTrailer(GroupTrailer::parse(gt)
+                                       .map_err(|e| {
+                                                    PE::Error(F::GroupTrailer, E::GroupTrailer(e))
+                                                })?)
+               }
+               R::FileTrailer(ref ft) => {
+                   P::FileTrailer(FileTrailer::parse(ft)
+                                      .map_err(|e| {
+                                                   PE::Error(F::FileTrailer, E::FileTrailer(e))
+                                               })?)
+               }
+           })
     }
 }
 
@@ -147,7 +148,7 @@ pub enum FileHeaderError {
 }
 impl<'a> Parsed for FileHeader<'a> {
     type Raw = RawFileHeader<'a>;
-    type Parsed = ParsedFileHeader;
+    type Parsed = ParsedFileHeader<'a>;
     type Field = FileHeaderField;
     type Err = FileHeaderError;
 
@@ -156,19 +157,19 @@ impl<'a> Parsed for FileHeader<'a> {
         use self::FileHeaderField as F;
         use self::FileHeaderError as E;
         Ok(ParsedFileHeader {
-            sender_ident: parse_str(raw.sender_ident, F::SenderIdent)?.to_owned(),
-            receiver_ident: parse_str(raw.receiver_ident, F::ReceiverIdent)?.to_owned(),
-            creation_date: parse_strfrom(raw.creation_date, F::CreationDate, E::Date)?,
-            creation_time: parse_strfrom(raw.creation_time, F::CreationTime, E::Time)?,
-            ident_num: parse_strint(raw.ident_num, F::IdentNum)?,
-            physical_record_len: parse_optstrint(raw.physical_record_len, F::PhysicalRecordLen)?,
-            block_size: parse_optstrint(raw.block_size, F::BlockSize)?,
-            version_number: if parse_str(raw.version_number, F::VersionNumber)? == "2" {
-                ()
-            } else {
-                return Err(PE::Format(F::VersionNumber));
-            },
-        })
+               sender_ident: parse_str(raw.sender_ident, F::SenderIdent)?,
+               receiver_ident: parse_str(raw.receiver_ident, F::ReceiverIdent)?,
+               creation_date: parse_strfrom(raw.creation_date, F::CreationDate, E::Date)?,
+               creation_time: parse_strfrom(raw.creation_time, F::CreationTime, E::Time)?,
+               ident_num: parse_strint(raw.ident_num, F::IdentNum)?,
+               physical_record_len: parse_optstrint(raw.physical_record_len, F::PhysicalRecordLen)?,
+               block_size: parse_optstrint(raw.block_size, F::BlockSize)?,
+               version_number: if parse_str(raw.version_number, F::VersionNumber)? == "2" {
+                   ()
+               } else {
+                   return Err(PE::Format(F::VersionNumber));
+               },
+           })
     }
 }
 
@@ -179,7 +180,7 @@ pub enum GroupHeaderError {
 }
 impl<'a> Parsed for GroupHeader<'a> {
     type Raw = RawGroupHeader<'a>;
-    type Parsed = ParsedGroupHeader;
+    type Parsed = ParsedGroupHeader<'a>;
     type Field = GroupHeaderField;
     type Err = GroupHeaderError;
 
@@ -187,19 +188,15 @@ impl<'a> Parsed for GroupHeader<'a> {
         use self::GroupHeaderField as F;
         use self::GroupHeaderError as E;
         Ok(ParsedGroupHeader {
-            ultimate_receiver_ident: parse_optstr(raw.ultimate_receiver_ident,
-                                                  F::UltimateReceiverIdent)
-                ?
-                .map(str::to_owned),
-            originator_ident: parse_optstr(raw.originator_ident, F::OriginatorIdent)
-                ?
-                .map(str::to_owned),
-            status: parse_strint(raw.status, F::Status)?,
-            as_of_date: parse_strfrom(raw.as_of_date, F::AsOfDate, E::Date)?,
-            as_of_time: parse_optstrfrom(raw.as_of_time, F::AsOfTime, E::Time)?,
-            currency: parse_optstr(raw.currency, F::AsOfTime)?.map(str::to_owned),
-            as_of_date_mod: parse_optstrint(raw.as_of_date_mod, F::AsOfDateMod)?,
-        })
+               ultimate_receiver_ident: parse_optstr(raw.ultimate_receiver_ident,
+                                                     F::UltimateReceiverIdent)?,
+               originator_ident: parse_optstr(raw.originator_ident, F::OriginatorIdent)?,
+               status: parse_strint(raw.status, F::Status)?,
+               as_of_date: parse_strfrom(raw.as_of_date, F::AsOfDate, E::Date)?,
+               as_of_time: parse_optstrfrom(raw.as_of_time, F::AsOfTime, E::Time)?,
+               currency: parse_optstr(raw.currency, F::AsOfTime)?,
+               as_of_date_mod: parse_optstrint(raw.as_of_date_mod, F::AsOfDateMod)?,
+           })
     }
 }
 
@@ -209,7 +206,7 @@ pub enum AccountIdentError<'a> {
 }
 impl<'a> Parsed for AccountIdent<'a> {
     type Raw = RawAccountIdent<'a>;
-    type Parsed = ParsedAccountIdent;
+    type Parsed = ParsedAccountIdent<'a>;
     type Field = AccountIdentField;
     type Err = AccountIdentError<'a>;
 
@@ -218,18 +215,17 @@ impl<'a> Parsed for AccountIdent<'a> {
         use self::AccountIdentField as F;
         use self::AccountIdentError as E;
         Ok(ParsedAccountIdent {
-            customer_account_num: parse_str(raw.customer_account_num, F::CustomerAccountNum)
-                ?
-                .to_owned(),
-            currency: parse_optstr(raw.currency, F::Currency)?.map(str::to_owned),
-            infos: {
-                let mut p = Vec::with_capacity(raw.infos.len());
-                for (i, info) in raw.infos.iter().enumerate() {
-                    p.push(Parsed::parse(info).map_err(|e| PE::Error(F::Infos, E::Info(i, e)))?)
-                }
-                p
-            },
-        })
+               customer_account_num: parse_str(raw.customer_account_num, F::CustomerAccountNum)?,
+               currency: parse_optstr(raw.currency, F::Currency)?,
+               infos: {
+                   let mut p = Vec::with_capacity(raw.infos.len());
+                   for (i, info) in raw.infos.iter().enumerate() {
+                       p.push(Parsed::parse(info)
+                                  .map_err(|e| PE::Error(F::Infos, E::Info(i, e)))?)
+                   }
+                   p
+               },
+           })
     }
 }
 
@@ -240,7 +236,7 @@ pub enum TransactionDetailError<'a> {
 }
 impl<'a> Parsed for TransactionDetail<'a> {
     type Raw = RawTransactionDetail<'a>;
-    type Parsed = ParsedTransactionDetail;
+    type Parsed = ParsedTransactionDetail<'a>;
     type Field = TransactionDetailField;
     type Err = TransactionDetailError<'a>;
 
@@ -249,44 +245,41 @@ impl<'a> Parsed for TransactionDetail<'a> {
         use self::TransactionDetailField as F;
         use self::TransactionDetailError as E;
         Ok(ParsedTransactionDetail {
-            type_code: parse_strint(raw.type_code, F::TypeCode)?,
-            amount: parse_optstrint(raw.amount, F::Amount)?,
-            funds_type: raw.funds_type
-                .as_ref()
-                .map_or(Ok(None), |ft| {
-                    FundsType::parse(ft)
-                        .map_err(|e| PE::Error(F::FundsType, E::FundsType(e)))
-                        .map(Some)
-                })?,
-            bank_ref_num: parse_optstr(raw.bank_ref_num, F::BankRefNum)?.map(str::to_owned),
-            customer_ref_num: parse_optstr(raw.customer_ref_num, F::CustomerRefNum)
-                ?
-                .map(str::to_owned),
-            text: {
-                if let Some((first_char, ref raw_text)) = raw.text {
-                    let mut out = Vec::with_capacity(raw_text.len());
-                    let mut raw_lines = raw_text.iter().enumerate();
-                    let first_raw_line = raw_lines.next().map(|x| x.1);
-                    let mut first_line = Vec::with_capacity(first_raw_line.map(|rl| rl.len())
-                        .unwrap_or(1));
-                    first_line.push(first_char);
-                    if let Some(first_raw_line) = first_raw_line {
-                        first_line.extend_from_slice(first_raw_line)
-                    }
-                    let first_line =
-                        str::from_utf8(&first_line).map_err(|e| PE::Error(F::Text, E::Text(0, e)))?;
-                    out.push(first_line.to_owned());
-                    for (i, raw_line) in raw_lines {
-                        out.push(str::from_utf8(raw_line)
-                            .map_err(|e| PE::Error(F::Text, E::Text(i, e)))?
-                            .to_owned());
-                    }
-                    Some(out)
-                } else {
-                    None
-                }
-            },
-        })
+               type_code: parse_strint(raw.type_code, F::TypeCode)?,
+               amount: parse_optstrint(raw.amount, F::Amount)?,
+               funds_type: raw.funds_type
+                   .as_ref()
+                   .map_or(Ok(None), |ft| {
+            FundsType::parse(ft)
+                .map_err(|e| PE::Error(F::FundsType, E::FundsType(e)))
+                .map(Some)
+        })?,
+               bank_ref_num: parse_optstr(raw.bank_ref_num, F::BankRefNum)?,
+               customer_ref_num: parse_optstr(raw.customer_ref_num, F::CustomerRefNum)?,
+               text: {
+                   if let Some((first_char, ref raw_text)) = raw.text {
+                       let mut out = Vec::with_capacity(raw_text.len());
+                       let mut raw_lines = raw_text.iter().enumerate();
+                       let first_raw_line = raw_lines.next().map(|x| x.1);
+                       let mut first_line =
+                           Vec::with_capacity(first_raw_line.map(|rl| rl.len()).unwrap_or(1));
+                       first_line.push(first_char);
+                       if let Some(first_raw_line) = first_raw_line {
+                           first_line.extend_from_slice(first_raw_line)
+                       }
+                       let first_line = str::from_utf8(&*first_line)
+                           .map(str::to_owned)
+                           .map_err(|e| PE::Error(F::Text, E::Text(0, e)))?;
+                       for (i, raw_line) in raw_lines {
+                           out.push(str::from_utf8(raw_line)
+                                        .map_err(|e| PE::Error(F::Text, E::Text(i, e)))?);
+                       }
+                       Some((first_line, out))
+                   } else {
+                       None
+                   }
+               },
+           })
     }
 }
 
@@ -299,9 +292,9 @@ impl<'a> Parsed for AccountTrailer<'a> {
     fn parse(raw: &Self::Raw) -> Result<Self::Parsed, ParseError<Self>> {
         use self::AccountTrailerField as F;
         Ok(ParsedAccountTrailer {
-            control_total: parse_strint(raw.control_total, F::ControlTotal)?,
-            records_num: parse_strint(raw.records_num, F::RecordsNum)?,
-        })
+               control_total: parse_strint(raw.control_total, F::ControlTotal)?,
+               records_num: parse_strint(raw.records_num, F::RecordsNum)?,
+           })
     }
 }
 
@@ -314,10 +307,10 @@ impl<'a> Parsed for GroupTrailer<'a> {
     fn parse(raw: &Self::Raw) -> Result<Self::Parsed, ParseError<Self>> {
         use self::GroupTrailerField as F;
         Ok(ParsedGroupTrailer {
-            control_total: parse_strint(raw.control_total, F::ControlTotal)?,
-            accounts_num: parse_strint(raw.accounts_num, F::AccountsNum)?,
-            records_num: parse_strint(raw.records_num, F::RecordsNum)?,
-        })
+               control_total: parse_strint(raw.control_total, F::ControlTotal)?,
+               accounts_num: parse_strint(raw.accounts_num, F::AccountsNum)?,
+               records_num: parse_strint(raw.records_num, F::RecordsNum)?,
+           })
     }
 }
 
@@ -330,10 +323,10 @@ impl<'a> Parsed for FileTrailer<'a> {
     fn parse(raw: &Self::Raw) -> Result<Self::Parsed, ParseError<Self>> {
         use self::FileTrailerField as F;
         Ok(ParsedFileTrailer {
-            control_total: parse_strint(raw.control_total, F::ControlTotal)?,
-            groups_num: parse_strint(raw.groups_num, F::GroupsNum)?,
-            records_num: parse_strint(raw.records_num, F::RecordsNum)?,
-        })
+               control_total: parse_strint(raw.control_total, F::ControlTotal)?,
+               groups_num: parse_strint(raw.groups_num, F::GroupsNum)?,
+               records_num: parse_strint(raw.records_num, F::RecordsNum)?,
+           })
     }
 }
 
@@ -344,23 +337,33 @@ pub enum DateError {
     Month,
     Day,
 }
-lazy_static! {
-    static ref DATE_RE: Regex = Regex::new(r"(..)(..)(..)").unwrap();
-    static ref TIME_RE: Regex = Regex::new(r"(..)(..)").unwrap();
-}
+named!(
+    date<&[u8], (&[u8], &[u8], &[u8]), DateError>,
+    do_parse!(
+        year: return_error!(::nom::ErrorKind::Custom(DateError::Year), take!(2)) >>
+        month: return_error!(::nom::ErrorKind::Custom(DateError::Month), take!(2)) >>
+        day: return_error!(::nom::ErrorKind::Custom(DateError::Day), take!(2)) >>
+        (year, month, day)
+    )
+);
 impl str::FromStr for Date {
     type Err = DateError;
     fn from_str(i: &str) -> Result<Date, DateError> {
         use self::DateError as E;
-        let caps = DATE_RE.captures(i).ok_or(E::All)?;
-        let year = caps.get(1).map(|m| m.as_str()).ok_or(E::Year)?;
-        let month = caps.get(2).map(|m| m.as_str()).ok_or(E::Month)?;
-        let day = caps.get(3).map(|m| m.as_str()).ok_or(E::Day)?;
+        let (year, month, day) = date(i.as_bytes())
+            .to_full_result()
+            .map_err(|e| match e {
+                         ::nom::IError::Error(::nom::ErrorKind::Custom(err)) => err,
+                         _ => DateError::All,
+                     })?;
+        let year = str::from_utf8(year).or(Err(E::Year))?;
+        let month = str::from_utf8(month).or(Err(E::Month))?;
+        let day = str::from_utf8(day).or(Err(E::Day))?;
         Ok(Date {
-            year: year.parse().or(Err(E::Year))?,
-            month: month.parse().or(Err(E::Month))?,
-            day: day.parse().or(Err(E::Day))?,
-        })
+               year: year.parse().or(Err(E::Year))?,
+               month: month.parse().or(Err(E::Month))?,
+               day: day.parse().or(Err(E::Day))?,
+           })
     }
 }
 #[derive(Debug)]
@@ -369,17 +372,30 @@ pub enum TimeError {
     Hour,
     Minute,
 }
+named!(
+    time<&[u8], (&[u8], &[u8]), TimeError>,
+    do_parse!(
+        hour: return_error!(::nom::ErrorKind::Custom(TimeError::Hour), take!(2)) >>
+        minute: return_error!(::nom::ErrorKind::Custom(TimeError::Minute), take!(2)) >>
+        (hour, minute)
+    )
+);
 impl str::FromStr for Time {
     type Err = TimeError;
     fn from_str(i: &str) -> Result<Time, TimeError> {
         use self::TimeError as E;
-        let caps = TIME_RE.captures(i).ok_or(E::All)?;
-        let hour = caps.get(1).map(|m| m.as_str()).ok_or(E::Hour)?;
-        let minute = caps.get(2).map(|m| m.as_str()).ok_or(E::Minute)?;
+        let (hour, minute) = time(i.as_bytes())
+            .to_full_result()
+            .map_err(|e| match e {
+                         ::nom::IError::Error(::nom::ErrorKind::Custom(err)) => err,
+                         _ => TimeError::All,
+                     })?;
+        let hour = str::from_utf8(hour).or(Err(E::Hour))?;
+        let minute = str::from_utf8(minute).or(Err(E::Minute))?;
         Ok(Time {
-            hour: hour.parse().or(Err(E::Hour))?,
-            minute: minute.parse().or(Err(E::Minute))?,
-        })
+               hour: hour.parse().or(Err(E::Hour))?,
+               minute: minute.parse().or(Err(E::Minute))?,
+           })
     }
 }
 
@@ -398,17 +414,17 @@ impl<'a> Parsed for AccountInfo<'a> {
         use self::AccountInfoField as F;
         use self::AccountInfoError as E;
         Ok(ParsedAccountInfo {
-            type_code: parse_optstrint(raw.type_code, F::TypeCode)?,
-            amount: parse_optstrint(raw.amount, F::Amount)?,
-            item_count: parse_optstrint(raw.item_count, F::ItemCount)?,
-            funds_type: raw.funds_type
-                .as_ref()
-                .map_or(Ok(None), |ft| {
-                    FundsType::parse(ft)
-                        .map_err(|e| PE::Error(F::FundsType, E::FundsType(e)))
-                        .map(Some)
-                })?,
-        })
+               type_code: parse_optstrint(raw.type_code, F::TypeCode)?,
+               amount: parse_optstrint(raw.amount, F::Amount)?,
+               item_count: parse_optstrint(raw.item_count, F::ItemCount)?,
+               funds_type: raw.funds_type
+                   .as_ref()
+                   .map_or(Ok(None), |ft| {
+            FundsType::parse(ft)
+                .map_err(|e| PE::Error(F::FundsType, E::FundsType(e)))
+                .map(Some)
+        })?,
+           })
     }
 }
 
@@ -432,40 +448,45 @@ impl<'a> Parsed for FundsType<'a> {
         use self::RawFundsType as R;
         use self::ParsedFundsType as P;
         Ok(match *raw {
-            R::Unknown => P::Unknown,
-            R::ImmediateAvail => P::ImmediateAvail,
-            R::OneDayAvail => P::OneDayAvail,
-            R::TwoOrMoreDaysAvail => P::TwoOrMoreDaysAvail,
-            R::DistributedAvailS { immediate, one_day, more_than_one_day } => {
-                P::DistributedAvailS {
-                    immediate: parse_optstrint(immediate, F::DistributedAvailSImmediate)?,
-                    one_day: parse_optstrint(one_day, F::DistributedAvailSOneDay)?,
-                    more_than_one_day: parse_optstrint(more_than_one_day,
-                                                       F::DistributedAvailSMoreThanOneDay)?,
-                }
-            }
-            R::ValueDated { date, time } => {
-                P::ValueDated {
-                    date: parse_strfrom(date, F::ValueDatedDate, E::Date)?,
-                    time: parse_optstrfrom(time, F::ValueDatedTime, E::Time)?,
-                }
-            }
-            R::DistributedAvailD { num, ref dists } => {
-                P::DistributedAvailD {
-                    num: parse_strint(num, F::DistributedAvailDNum)?,
-                    dists: {
-                        let mut p = Vec::with_capacity(dists.len());
-                        for (i, dist) in dists.iter().enumerate() {
-                            p.push(DistributedAvailDistribution::parse(dist).map_err(|e| {
-                                    PE::Error(F::DistributedAvailDDists,
-                                              E::DistributedAvailDDist(i, e))
-                                })?)
-                        }
-                        p
-                    },
-                }
-            }
-        })
+               R::Unknown => P::Unknown,
+               R::ImmediateAvail => P::ImmediateAvail,
+               R::OneDayAvail => P::OneDayAvail,
+               R::TwoOrMoreDaysAvail => P::TwoOrMoreDaysAvail,
+               R::DistributedAvailS {
+                   immediate,
+                   one_day,
+                   more_than_one_day,
+               } => {
+                   P::DistributedAvailS {
+                       immediate: parse_optstrint(immediate, F::DistributedAvailSImmediate)?,
+                       one_day: parse_optstrint(one_day, F::DistributedAvailSOneDay)?,
+                       more_than_one_day: parse_optstrint(more_than_one_day,
+                                                          F::DistributedAvailSMoreThanOneDay)?,
+                   }
+               }
+               R::ValueDated { date, time } => {
+                   P::ValueDated {
+                       date: parse_strfrom(date, F::ValueDatedDate, E::Date)?,
+                       time: parse_optstrfrom(time, F::ValueDatedTime, E::Time)?,
+                   }
+               }
+               R::DistributedAvailD { num, ref dists } => {
+                   P::DistributedAvailD {
+                       num: parse_strint(num, F::DistributedAvailDNum)?,
+                       dists: {
+                           let mut p = Vec::with_capacity(dists.len());
+                           for (i, dist) in dists.iter().enumerate() {
+                               p.push(DistributedAvailDistribution::parse(dist)
+                                          .map_err(|e| {
+                                                       PE::Error(F::DistributedAvailDDists,
+                                                                 E::DistributedAvailDDist(i, e))
+                                                   })?)
+                           }
+                           p
+                       },
+                   }
+               }
+           })
     }
 }
 
@@ -478,8 +499,8 @@ impl<'a> Parsed for DistributedAvailDistribution<'a> {
     fn parse(raw: &Self::Raw) -> Result<Self::Parsed, ParseError<Self>> {
         use self::DistributedAvailDistributionField as F;
         Ok(ParsedDistributedAvailDistribution {
-            days: parse_strint(raw.days, F::Days)?,
-            amount: parse_strint(raw.amount, F::Amount)?,
-        })
+               days: parse_strint(raw.days, F::Days)?,
+               amount: parse_strint(raw.amount, F::Amount)?,
+           })
     }
 }

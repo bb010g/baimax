@@ -1,17 +1,16 @@
+#![feature(test)]
 #![feature(try_from)]
-#![feature(plugin)]
-#![plugin(clippy)]
+#![cfg_attr(feature="lint", feature(plugin))]
+#![cfg_attr(feature="lint", plugin(clippy))]
+
+#[cfg(feature="flame_it")]
+extern crate flame;
+extern crate test;
 
 extern crate chrono;
 #[macro_use]
-extern crate if_chain;
-#[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate nom;
 extern crate penny;
-#[macro_use]
-extern crate regex;
 extern crate void;
 
 macro_rules! enum_mapping {
@@ -28,7 +27,7 @@ macro_rules! enum_mapping {
             $custom($ty)
         }
         impl ::std::convert::TryFrom<$ty> for $name {
-            type Err = $ty;
+            type Error = $ty;
             fn try_from(x: $ty) -> Result<$name, $ty> {
                 match x {
                     $($val => Ok($name::$key),)+
@@ -52,7 +51,7 @@ macro_rules! enum_mapping {
             $($key,)+
         }
         impl ::std::convert::TryFrom<$ty> for $name {
-            type Err = $ty;
+            type Error = $ty;
             fn try_from(x: $ty) -> Result<$name, $ty> {
                 match x {
                     $($val => Ok($name::$key),)+
@@ -77,10 +76,76 @@ pub mod parse;
 
 #[cfg(test)]
 mod tests {
-    mod parser {
-        use ::parse;
+    use super::*;
+    use test::Bencher;
 
-        #[test]
-        fn record() {}
+    macro_rules! benchmark_file {
+        ($file_name:ident, $file_path:expr,
+         $process:ident, $parse:ident, $ast_parse:ident, $convert:ident,
+         $end_of_day:expr) => {
+            static $file_name: &'static str = include_str!($file_path);
+
+            #[bench]
+            fn $process(b: &mut Bencher) {
+                let bytes = $file_name.bytes().collect::<Vec<_>>();
+                let end_of_day = $end_of_day;
+
+                b.iter(|| {
+                    let raw = parse::file(bytes.as_slice()).to_result().unwrap();
+                    use ast::parse::Parsed;
+                    let mut parsed = raw.iter().map(|r| ast::Record::parse(r).unwrap());
+                    ast::convert::convert(&mut parsed, &end_of_day).unwrap()
+                })
+            }
+
+            #[bench]
+            fn $parse(b: &mut Bencher) {
+                let bytes = $file_name.bytes().collect::<Vec<_>>();
+
+                b.iter(|| {
+                    parse::file(bytes.as_slice()).to_result().unwrap()
+                })
+            }
+
+            #[bench]
+            fn $ast_parse(b: &mut Bencher) {
+                let bytes = $file_name.bytes().collect::<Vec<_>>();
+
+                let raw = parse::file(bytes.as_slice()).to_result().unwrap();
+                use ast::parse::Parsed;
+                b.iter(|| {
+                    raw.iter().map(|r| ast::Record::parse(r).unwrap()).count()
+                })
+            }
+
+            #[bench]
+            fn $convert(b: &mut Bencher) {
+                let bytes = $file_name.bytes().collect::<Vec<_>>();
+                let end_of_day = $end_of_day;
+
+                let raw = parse::file(bytes.as_slice()).to_result().unwrap();
+                use ast::parse::Parsed;
+                let parsed = raw.iter().map(|r| ast::Record::parse(r).unwrap()).collect::<Vec<_>>();
+                b.iter(|| {
+                    let parsed = parsed.to_vec();
+                    ast::convert::convert(&mut parsed.into_iter(), &end_of_day).unwrap()
+                })
+            }
+        };
     }
+
+    benchmark_file!(SPEC_EXAMPLE,
+                    "../spec-example.bai",
+                    process_spec_example,
+                    parse_spec_example,
+                    ast_parse_spec_example,
+                    convert_spec_example,
+                    chrono::NaiveTime::from_hms(17, 23, 00));
+    //benchmark_file!(REAL_WORLD,
+    //                "../real-world.bai",
+    //                process_real_world,
+    //                parse_real_world,
+    //                ast_parse_real_world,
+    //                convert_real_world,
+    //                chrono::NaiveTime::from_hms(16, 00, 00));
 }

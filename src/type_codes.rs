@@ -1,11 +1,23 @@
-#![allow(enum_variant_names)]
-use std::convert::{TryFrom, TryInto};
+#![cfg_attr(feature="lint", allow(enum_variant_names))]
 
-#[derive(Debug)]
+use std::convert::{TryFrom, TryInto};
+use std::fmt;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeCode {
     Status(StatusCode),
     Summary(SummaryCode),
     Detail(DetailCode),
+}
+impl fmt::Display for TypeCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Type(")?;
+        match *self {
+            TypeCode::Status(ref code) => write!(f, "Status, {})", code),
+            TypeCode::Summary(ref code) => write!(f, "Summary, {})", code),
+            TypeCode::Detail(ref code) => write!(f, "Detail, {})", code),
+        }
+    }
 }
 
 impl From<TypeCode> for u16 {
@@ -18,7 +30,7 @@ impl From<TypeCode> for u16 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusCode {
     // 001-099, 900-919
     Account(AccountStatus),
@@ -27,7 +39,7 @@ pub enum StatusCode {
 }
 
 impl TryFrom<u16> for StatusCode {
-    type Err = u16;
+    type Error = u16;
     fn try_from(code: u16) -> Result<StatusCode, u16> {
         match code {
             c @ 1...99 | c @ 900...919 => c.try_into().map(StatusCode::Account),
@@ -44,8 +56,17 @@ impl From<StatusCode> for u16 {
         }
     }
 }
+impl fmt::Display for StatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Status(")?;
+        match *self {
+            StatusCode::Account(ref code) => write!(f, "Account, {:?})", code),
+            StatusCode::Loan(ref code) => write!(f, "Loan, {:?})", code),
+        }
+    }
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SummaryCode {
     // 100-399, 920-959
     Credit(CreditSummary),
@@ -56,7 +77,7 @@ pub enum SummaryCode {
 }
 
 impl TryFrom<u16> for SummaryCode {
-    type Err = u16;
+    type Error = u16;
     fn try_from(code: u16) -> Result<SummaryCode, u16> {
         match code {
             c @ 100...399 | c @ 920...959 => c.try_into().map(SummaryCode::Credit),
@@ -75,8 +96,18 @@ impl From<SummaryCode> for u16 {
         }
     }
 }
+impl fmt::Display for SummaryCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Summary(")?;
+        match *self {
+            SummaryCode::Credit(ref code) => write!(f, "Credit, {:?})", code),
+            SummaryCode::Debit(ref code) => write!(f, "Debit, {:?})", code),
+            SummaryCode::Loan(ref code) => write!(f, "Loan, {:?})", code),
+        }
+    }
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailCode {
     // 100-399, 920-959
     Credit(CreditDetail),
@@ -89,7 +120,7 @@ pub enum DetailCode {
 }
 
 impl TryFrom<u16> for DetailCode {
-    type Err = u16;
+    type Error = u16;
     fn try_from(code: u16) -> Result<DetailCode, u16> {
         match code {
             c @ 100...399 | c @ 920...959 => c.try_into().map(DetailCode::Credit),
@@ -110,9 +141,20 @@ impl From<DetailCode> for u16 {
         }
     }
 }
+impl fmt::Display for DetailCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Summary(")?;
+        match *self {
+            DetailCode::Credit(ref code) => write!(f, "Credit, {:?})", code),
+            DetailCode::Debit(ref code) => write!(f, "Debit, {:?})", code),
+            DetailCode::Loan(ref code) => write!(f, "Loan, {:?})", code),
+            DetailCode::NonMonetary => write!(f, "NonMonetary)"),
+        }
+    }
+}
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub AccountStatus(u16) {
         OpeningLedger(10),
         AvgOpeningLedgerMtd(11),
@@ -172,7 +214,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub LoanStatus(u16) {
         PrincipalLoanBalance(701),
         AvailableCommitmentAmount(703),
@@ -183,7 +225,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub CreditSummary(u16) {
         TotalCredits(100),
         TotalCreditAmountMtd(101),
@@ -283,7 +325,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub DebitSummary(u16) {
         TotalDebits(400),
         TotalDebitAmountMtd(401),
@@ -377,7 +419,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub LoanSummary(u16) {
         TotalLoanPayment(720),
         LoanDisbursement(760),
@@ -385,7 +427,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub CreditDetail(u16) {
         CreditAnyType(108),
         // Lockbox
@@ -534,7 +576,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub DebitDetail(u16) {
         FloatAdjustment(408),
         DebitAnyType(409),
@@ -680,7 +722,7 @@ enum_mapping! {
 }
 
 enum_mapping! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub LoanDetail(u16) {
         AmountAppliedToInterest(721),
         AmountAppliedToPrincipal(722),

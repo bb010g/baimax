@@ -1,20 +1,36 @@
 [package]
 authors = ["Brayden Banks <bb010g@gmail.com>"]
-name = "baimax"
-version = "0.1.0"
-license = "MIT/Apache-2.0"
-readme = "README.md"
 description = "Type-safe BAI serialization library for Rust"
+license = "MIT/Apache-2.0"
+name = "baimax"
+readme = "README.md"
 repository = "https://github.com/bb010g/baimax.git"
+version = "0.1.0"
 
 [dependencies]
-chrono = "0.2.25"
-clippy = "*"
-if_chain = "0.1.1"
-lazy_static = "0.2.2"
-nom = "2.0.1"
-regex = "0.2.1"
+chrono = "0.3.0"
+nom = "3.0.0"
 void = "1.0.2"
 
+[dependencies.clippy]
+optional = true
+version = "*"
+
+[dependencies.flame]
+optional = true
+version = "0.1.11"
+
+[dependencies.flamer]
+optional = true
+version = "0.1.4"
+
 [dependencies.penny]
-git = "https://github.com/bb010g/penny.git"
+path = "../penny"
+
+[features]
+default = []
+flame_it = ["flame", "flamer"]
+lint = ["clippy"]
+
+[profile.bench]
+debug = true
