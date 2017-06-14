@@ -53,7 +53,7 @@ impl<'a, 'b: 'a> Write for PadAdapter<'a, 'b> {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum NaiveDateOrTime {
     Date(NaiveDate),
     DateTime(NaiveDateTime),
@@ -95,7 +95,7 @@ impl NaiveDateOrTime {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct File {
     pub sender: Party,
     pub receiver: Party,
@@ -124,7 +124,7 @@ impl fmt::Display for File {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct Party(pub String);
 impl fmt::Display for Party {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -133,7 +133,7 @@ impl fmt::Display for Party {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct FileIdent(pub u32);
 impl fmt::Display for FileIdent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -142,7 +142,7 @@ impl fmt::Display for FileIdent {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct Group {
     pub ultimate_receiver: Option<Party>,
     // Optional because banks seem to treat it as such ( :( )
@@ -238,7 +238,7 @@ impl fmt::Display for AsOfDateModifier {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct Account {
     pub customer_account: AccountNumber,
     pub currency: Option<Currency>,
@@ -282,7 +282,7 @@ impl fmt::Display for Account {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum AccountInfo {
     Summary {
         code: SummaryCode,
@@ -344,7 +344,7 @@ impl fmt::Display for AccountInfo {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct AccountNumber(pub String);
 impl fmt::Display for AccountNumber {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -353,7 +353,7 @@ impl fmt::Display for AccountNumber {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum FundsType {
     Unknown, // Z (default)
     ImmediateAvail, // 0
@@ -414,7 +414,7 @@ impl fmt::Display for FundsType {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct DistributedAvailDistribution {
     pub days: u32,
     pub amount: i64,
@@ -427,7 +427,7 @@ impl DistributedAvailDistribution {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct TransactionDetail {
     pub code: DetailCode,
     pub amount: Option<u64>,
@@ -439,7 +439,9 @@ pub struct TransactionDetail {
 
 impl TransactionDetail {
     pub fn amount_money(&self, account_cur: Currency) -> Option<Money> {
-        self.amount.map(|amount| Money::new(amount as i64, account_cur))
+        self.amount.map(
+            |amount| Money::new(amount as i64, account_cur),
+        )
     }
 }
 impl fmt::Display for TransactionDetail {
@@ -469,7 +471,7 @@ impl fmt::Display for TransactionDetail {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct ReferenceNum(pub String);
 impl fmt::Display for ReferenceNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

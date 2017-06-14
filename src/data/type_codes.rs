@@ -4,7 +4,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum TypeCode {
     Status(StatusCode),
     Summary(SummaryCode),
@@ -32,7 +32,7 @@ impl From<TypeCode> for u16 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum StatusCode {
     // 001-099, 900-919
     Account(AccountStatus),
@@ -69,7 +69,7 @@ impl fmt::Display for StatusCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum SummaryCode {
     // 100-399, 920-959
     Credit(CreditSummary),
@@ -111,7 +111,7 @@ impl fmt::Display for SummaryCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum DetailCode {
     // 100-399, 920-959
     Credit(CreditDetail),

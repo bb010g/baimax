@@ -1,5 +1,2 @@
-*.bk
-.autoenv.zsh
-
 target
 Cargo.lock

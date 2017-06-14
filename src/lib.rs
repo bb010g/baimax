@@ -7,9 +7,9 @@ extern crate chrono;
 #[macro_use]
 extern crate nom;
 extern crate penny;
-#[cfg(featuer="serde")]
+#[cfg(featuer = "serde")]
 extern crate serde;
-#[cfg(feature="serde")]
+#[cfg(feature = "serde")]
 #[macro_use]
 extern crate serde_derive;
 #[cfg(test)]
@@ -136,11 +136,13 @@ mod tests {
         };
     }
 
-    benchmark_file!(SPEC_EXAMPLE,
-                    "../spec-example.bai",
-                    process_spec_example,
-                    parse_spec_example,
-                    ast_parse_spec_example,
-                    convert_spec_example,
-                    chrono::NaiveTime::from_hms(17, 23, 00));
+    benchmark_file!(
+        SPEC_EXAMPLE,
+        "../spec-example.bai",
+        process_spec_example,
+        parse_spec_example,
+        ast_parse_spec_example,
+        convert_spec_example,
+        chrono::NaiveTime::from_hms(17, 23, 00)
+    );
 }
