@@ -1,16 +1,19 @@
-#![feature(test)]
+#![cfg_attr(cfg="test", feature(test))]
 #![feature(try_from)]
 #![cfg_attr(feature="lint", feature(plugin))]
 #![cfg_attr(feature="lint", plugin(clippy))]
-
-#[cfg(feature="flame_it")]
-extern crate flame;
-extern crate test;
 
 extern crate chrono;
 #[macro_use]
 extern crate nom;
 extern crate penny;
+#[cfg(featuer="serde")]
+extern crate serde;
+#[cfg(feature="serde")]
+#[macro_use]
+extern crate serde_derive;
+#[cfg(test)]
+extern crate test;
 extern crate void;
 
 macro_rules! enum_mapping {
@@ -141,11 +144,4 @@ mod tests {
                     ast_parse_spec_example,
                     convert_spec_example,
                     chrono::NaiveTime::from_hms(17, 23, 00));
-    //benchmark_file!(REAL_WORLD,
-    //                "../real-world.bai",
-    //                process_real_world,
-    //                parse_real_world,
-    //                ast_parse_real_world,
-    //                convert_real_world,
-    //                chrono::NaiveTime::from_hms(16, 00, 00));
 }

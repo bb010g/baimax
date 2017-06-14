@@ -8,7 +8,7 @@ use data;
 
 macro_rules! raw_parsed {
     () => {};
-    ([$(#[$meta:meta])*] pub struct $raw:ident<$raw_lt:tt> => $parsed:ident {
+    ($(#[$meta:meta])* pub struct $raw:ident<$raw_lt:tt> => $parsed:ident {
         $(pub $field:ident: $raw_ty:ty => $parsed_ty:ty,)*
     } $($tail:tt)*) => {
         $(#[$meta])* pub struct $raw<$raw_lt> {
@@ -19,7 +19,7 @@ macro_rules! raw_parsed {
         }
         raw_parsed!($($tail)*);
     };
-    ([$(#[$meta:meta])*] pub struct $raw:ident<$raw_lt:tt> => $parsed:ident<$parsed_lt:tt> {
+    ($(#[$meta:meta])* pub struct $raw:ident<$raw_lt:tt> => $parsed:ident<$parsed_lt:tt> {
         $(pub $field:ident: $raw_ty:ty => $parsed_ty:ty,)*
     } $($tail:tt)*) => {
         $(#[$meta])* pub struct $raw<$raw_lt> {
@@ -34,32 +34,7 @@ macro_rules! raw_parsed {
 macro_rules! parsed {
     () => {};
 
-    (pub struct $name:ident[$fields:ident]
-     ($raw:ident<$raw_lt:tt> => $parsed:ident) {
-         $(pub $field_ty:ident($field:ident): $raw_ty:ty => $parsed_ty:ty,)*
-     } $($tail:tt)*) => {
-        parsed!(
-            []
-            pub struct $name[$fields] ($raw<$raw_lt> => $parsed) {
-                $(pub $field_ty($field): $raw_ty => $parsed_ty,)*
-            }
-            $($tail)*
-        );
-    };
-    (pub struct $name:ident[$fields:ident]
-                ($raw:ident<$raw_lt:tt> => $parsed:ident<$parsed_lt:tt>) {
-         $(pub $field_ty:ident($field:ident): $raw_ty:ty => $parsed_ty:ty,)*
-    } $($tail:tt)*) => {
-        parsed!(
-            []
-            pub struct $name[$fields] ($raw<$raw_lt> => $parsed<$parsed_lt>) {
-                $(pub $field_ty($field): $raw_ty => $parsed_ty,)*
-            }
-            $($tail)*
-        );
-    };
-
-    ([$(#[$meta:meta])*]
+    ($(#[$meta:meta])*
      pub struct $name:ident[$fields:ident]
      ($raw:ident<$raw_lt:tt> => $parsed:ident) {
          $(pub $field_ty:ident($field:ident): $raw_ty:ty => $parsed_ty:ty,)*
@@ -71,14 +46,15 @@ macro_rules! parsed {
             $($field_ty,)*
         }
         raw_parsed! {
-            [#[derive(Debug, Clone)] $(#[$meta])*]
+            #[derive(Debug, Clone)]
+            $(#[$meta])*
             pub struct $raw<$raw_lt> => $parsed {
                 $(pub $field: $raw_ty => $parsed_ty,)*
             }
         }
         parsed!($($tail)*);
     };
-    ([$(#[$meta:meta])*]
+    ($(#[$meta:meta])*
      pub struct $name:ident[$fields:ident]
                 ($raw:ident<$raw_lt:tt> => $parsed:ident<$parsed_lt:tt>) {
          $(pub $field_ty:ident($field:ident): $raw_ty:ty => $parsed_ty:ty,)*
@@ -90,7 +66,8 @@ macro_rules! parsed {
             $($field_ty,)*
         }
         raw_parsed! {
-            [#[derive(Debug, Clone)] $(#[$meta])*]
+            #[derive(Debug, Clone)]
+            $(#[$meta])*
             pub struct $raw<$raw_lt> => $parsed<$parsed_lt> {
                 $(pub $field: $raw_ty => $parsed_ty,)*
             }

@@ -16,21 +16,18 @@ void = "1.0.2"
 optional = true
 version = "*"
 
-[dependencies.flame]
-optional = true
-version = "0.1.11"
-
-[dependencies.flamer]
-optional = true
-version = "0.1.4"
-
 [dependencies.penny]
 path = "../penny"
 
-[features]
-default = []
-flame_it = ["flame", "flamer"]
-lint = ["clippy"]
+[dependencies.serde]
+optional = true
+version = "1.0.8"
 
-[profile.bench]
-debug = true
+[dependencies.serde_derive]
+optional = true
+version = "1.0.8"
+
+[features]
+default = ["serde-serialize"]
+lint = ["clippy"]
+serde-serialize = ["chrono/serde", "penny/serde-serialize", "serde", "serde_derive"]

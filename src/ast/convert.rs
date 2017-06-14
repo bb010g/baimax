@@ -7,7 +7,8 @@ use ast;
 use ast::data;
 use ast::data::NaiveDateOrTime;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum ChronoError {
     InvalidDate,
     InvalidTime,
@@ -45,7 +46,8 @@ fn chrono_date_or_time(date: &ast::Date,
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum FileConvError {
     NotFileHeader,
     Creation(ChronoError),
@@ -56,9 +58,7 @@ pub enum FileConvError {
     RecordsNum(usize),
 }
 
-pub fn convert<'a, 'cur, I>(mut iter: &mut I,
-                            end_of_day: &NaiveTime)
-                            -> Result<data::File<'cur>, FileConvError>
+pub fn convert<'a, I>(mut iter: &mut I, end_of_day: &NaiveTime) -> Result<data::File, FileConvError>
     where I: Iterator<Item = ast::ParsedRecord<'a>>
 {
     use ast::ParsedRecord as PR;
@@ -96,7 +96,8 @@ pub fn convert<'a, 'cur, I>(mut iter: &mut I,
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum GroupConvError {
     NotGroupHeaderOrFileTrailer,
     Status,
@@ -110,12 +111,12 @@ pub enum GroupConvError {
     RecordsNum(usize),
 }
 
-fn convert_groups<'a, 'cur, I>
+fn convert_groups<'a, I>
     (mut iter: &mut I,
      end_of_day: &NaiveTime,
      file_control_total: &mut i64,
      file_groups_num: &mut usize)
-     -> Result<(Vec<data::Group<'cur>>, ast::ParsedFileTrailer), (usize, GroupConvError)>
+     -> Result<(Vec<data::Group>, ast::ParsedFileTrailer), (usize, GroupConvError)>
     where I: Iterator<Item = ast::ParsedRecord<'a>>
 {
     use ast::ParsedRecord as PR;
@@ -143,10 +144,9 @@ fn convert_groups<'a, 'cur, I>
                     },
                     currency: gh.currency
                         .map_or(Ok(None), |s| {
-                            penny::CURRENCIES
-                                .get(s)
-                                .ok_or((*file_groups_num, CE::Currency(s.to_owned())))
+                            s.parse::<penny::Currency>()
                                 .map(Some)
+                                .map_err(|_| (*file_groups_num, CE::Currency(s.to_owned())))
                         })?,
                     as_of_date_mod: gh.as_of_date_mod
                         .map_or(Ok(None), |m| {
@@ -186,24 +186,25 @@ fn convert_groups<'a, 'cur, I>
     Ok((groups, file_trailer))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum AccountConvError {
     NotTransactionDetailOrAccountTrailer,
     NotAccountTrailer,
     NotAccountIdentOrGroupTrailer,
-    Currency,
+    Currency(String),
     AccountInfo(usize, AccountInfoConvError),
     TransactionDetail(usize, TransactionDetailConvError),
     ControlTotal(i64),
     RecordsNum(usize),
 }
 
-fn convert_accounts<'a, 'cur, I>
+fn convert_accounts<'a, I>
     (mut iter: &mut I,
      end_of_day: &NaiveTime,
      group_control_total: &mut i64,
      group_accounts_num: &mut usize)
-     -> Result<(Vec<data::Account<'cur>>, ast::ParsedGroupTrailer), (usize, AccountConvError)>
+     -> Result<(Vec<data::Account>, ast::ParsedGroupTrailer), (usize, AccountConvError)>
     where I: Iterator<Item = ast::ParsedRecord<'a>>
 {
     use ast::ParsedRecord as PR;
@@ -221,10 +222,9 @@ fn convert_accounts<'a, 'cur, I>
                     customer_account: data::AccountNumber(ah.customer_account_num.to_owned()),
                     currency: ah.currency
                         .map_or(Ok(None), |s| {
-                            penny::CURRENCIES
-                                .get(s)
-                                .ok_or((*group_accounts_num, CE::Currency))
+                            s.parse::<penny::Currency>()
                                 .map(Some)
+                                .map_err(|_| (*group_accounts_num, CE::Currency(s.to_owned())))
                         })?,
                     infos: {
                         let (infos, control_total) =
@@ -266,7 +266,8 @@ fn convert_accounts<'a, 'cur, I>
     Ok((accounts, group_trailer))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum AccountInfoConvError {
     NoCode,
     InvalidCode,
@@ -331,7 +332,8 @@ fn convert_infos(pinfos: &[ast::ParsedAccountInfo],
     Ok((infos, control_total))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum FundsTypeConvError {
     ValueDated(ChronoError),
     DistributedAvailDNum(usize),
@@ -386,7 +388,8 @@ fn convert_funds_type(funds_type: &ast::ParsedFundsType,
        })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum TransactionDetailConvError {
     NotTransactionDetailOrAccountTrailer,
     DetailCode(u16),

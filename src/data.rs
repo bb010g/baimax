@@ -2,7 +2,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;
 use chrono::{NaiveDate, NaiveDateTime};
-use penny::{currencies, Currency, Money};
+use penny;
+use penny::{Currency, Money};
 pub use type_codes::*;
 
 // From std::fmt::builders (MIT/Apache-2.0)
@@ -50,6 +51,7 @@ impl<'a, 'b: 'a> Write for PadAdapter<'a, 'b> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum NaiveDateOrTime {
     Date(NaiveDate),
     DateTime(NaiveDateTime),
@@ -91,15 +93,16 @@ impl NaiveDateOrTime {
 }
 
 #[derive(Debug, Clone)]
-pub struct File<'cur> {
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+pub struct File {
     pub sender: Party,
     pub receiver: Party,
     pub creation: NaiveDateTime,
     pub ident: FileIdent,
-    pub groups: Vec<Group<'cur>>,
+    pub groups: Vec<Group>,
 }
 
-impl<'cur> fmt::Display for File<'cur> {
+impl fmt::Display for File {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -119,6 +122,7 @@ impl<'cur> fmt::Display for File<'cur> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct Party(pub String);
 impl fmt::Display for Party {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -126,7 +130,8 @@ impl fmt::Display for Party {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct FileIdent(pub u32);
 impl fmt::Display for FileIdent {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -135,24 +140,25 @@ impl fmt::Display for FileIdent {
 }
 
 #[derive(Debug, Clone)]
-pub struct Group<'cur> {
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+pub struct Group {
     pub ultimate_receiver: Option<Party>,
     // Optional because banks seem to treat it as such ( :( )
     pub originator: Option<Party>,
     pub status: GroupStatus,
     pub as_of: NaiveDateOrTime,
-    pub currency: Option<&'cur Currency<'cur>>,
+    pub currency: Option<Currency>,
     pub as_of_date_mod: Option<AsOfDateModifier>,
-    pub accounts: Vec<Account<'cur>>,
+    pub accounts: Vec<Account>,
 }
 
-impl<'cur> Group<'cur> {
-    pub fn currency_def(&self) -> &'cur Currency<'cur> {
-        self.currency.unwrap_or(currencies::USD_REF)
+impl Group {
+    pub fn currency_def(&self) -> Currency {
+        self.currency.unwrap_or(Currency::USD)
     }
 }
 
-impl<'cur> fmt::Display for Group<'cur> {
+impl fmt::Display for Group {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Group {}: ", self.status).and_then(|()| {
             match self.originator {
@@ -172,7 +178,7 @@ impl<'cur> fmt::Display for Group<'cur> {
                 Some(ref as_of_date_mod) => write!(f, " ({})", as_of_date_mod),
             }
         }).and_then(|()| {
-            write!(f, " in {}", self.currency_def().code())
+            write!(f, " in {}", self.currency_def())
         }).and_then(|()| {
             write!(f, " {{\n")
         }).and_then(|()| {
@@ -186,7 +192,8 @@ impl<'cur> fmt::Display for Group<'cur> {
 }
 
 enum_mapping! {
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
+    #[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
     pub GroupStatus(u8) {
         Update(1),
         Deletion(2),
@@ -207,7 +214,8 @@ impl fmt::Display for GroupStatus {
 }
 
 enum_mapping! {
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
+    #[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
     pub AsOfDateModifier(u8) {
         InterimPrevious(1),
         FinalPrevious(2),
@@ -228,25 +236,26 @@ impl fmt::Display for AsOfDateModifier {
 }
 
 #[derive(Debug, Clone)]
-pub struct Account<'cur> {
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
+pub struct Account {
     pub customer_account: AccountNumber,
-    pub currency: Option<&'cur Currency<'cur>>,
+    pub currency: Option<Currency>,
     pub infos: Vec<AccountInfo>,
     pub transaction_details: Vec<TransactionDetail>,
 }
 
-impl<'cur> Account<'cur> {
-    pub fn currency_def(&self, group_cur: &'cur Currency<'cur>) -> &'cur Currency<'cur> {
+impl Account {
+    pub fn currency_def(&self, group_cur: Currency) -> Currency {
         self.currency.unwrap_or(group_cur)
     }
 }
 
-impl<'cur> fmt::Display for Account<'cur> {
+impl fmt::Display for Account {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Account {} ", self.customer_account).and_then(|()| {
             match self.currency {
                 None => Ok(()),
-                Some(c) => write!(f, "({}) ", c.code()),
+                Some(c) => write!(f, "({}) ", c),
             }
         }).and_then(|()| {
             write!(f, "{{\n    Infos: [\n")
@@ -271,6 +280,7 @@ impl<'cur> fmt::Display for Account<'cur> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum AccountInfo {
     Summary {
         code: SummaryCode,
@@ -285,7 +295,7 @@ pub enum AccountInfo {
 }
 
 impl AccountInfo {
-    pub fn amount_money<'cur>(&self, account_cur: &'cur Currency<'cur>) -> Option<Money<'cur>> {
+    pub fn amount_money(&self, account_cur: Currency) -> Option<Money> {
         use self::AccountInfo as AI;
         match *self {
             AI::Summary { amount: Some(amount), .. } => {
@@ -332,6 +342,7 @@ impl fmt::Display for AccountInfo {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct AccountNumber(pub String);
 impl fmt::Display for AccountNumber {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -340,6 +351,7 @@ impl fmt::Display for AccountNumber {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub enum FundsType {
     Unknown, // Z (default)
     ImmediateAvail, // 0
@@ -399,19 +411,21 @@ impl fmt::Display for FundsType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct DistributedAvailDistribution {
     pub days: u32,
     pub amount: i64,
 }
 
 impl DistributedAvailDistribution {
-    pub fn amount_money<'cur>(&self, funds_cur: &'cur Currency<'cur>) -> Money<'cur> {
+    pub fn amount_money(&self, funds_cur: Currency) -> Money {
         Money::new(self.amount, funds_cur)
     }
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct TransactionDetail {
     pub code: DetailCode,
     pub amount: Option<u64>,
@@ -422,9 +436,8 @@ pub struct TransactionDetail {
 }
 
 impl TransactionDetail {
-    pub fn amount_money<'cur>(&self, account_cur: &'cur Currency<'cur>) -> Option<Money<'cur>> {
-        self.amount
-            .map(|amount| Money::new(amount as i64, account_cur))
+    pub fn amount_money(&self, account_cur: Currency) -> Option<Money> {
+        self.amount.map(|amount| Money::new(amount as i64, account_cur))
     }
 }
 impl fmt::Display for TransactionDetail {
@@ -454,6 +467,7 @@ impl fmt::Display for TransactionDetail {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature="serde-serialize", derive(Serialize, Deserialize))]
 pub struct ReferenceNum(pub String);
 impl fmt::Display for ReferenceNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
