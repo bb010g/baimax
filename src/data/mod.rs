@@ -4,7 +4,9 @@ use std::fmt::Write;
 use chrono::{NaiveDate, NaiveDateTime};
 use penny;
 use penny::{Currency, Money};
-pub use type_codes::*;
+
+mod type_codes;
+pub use self::type_codes::*;
 
 // From std::fmt::builders (MIT/Apache-2.0)
 struct PadAdapter<'a, 'b: 'a> {

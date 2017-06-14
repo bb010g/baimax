@@ -73,7 +73,6 @@ macro_rules! enum_mapping {
 }
 
 pub mod data;
-pub mod type_codes;
 pub mod ast;
 pub mod parse;
 
