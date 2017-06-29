@@ -109,11 +109,11 @@ parsed! {
                (RawTransactionDetail<'a> => ParsedTransactionDetail<'a>) {
         // 16
         pub TypeCode(type_code): &'a [u8] => u16,
-        pub Amount(amount): Option<&'a [u8]> => Option<u64>,
+        pub Amount(amount): Option<&'a [u8]> => Option<i64>,
         pub FundsType(funds_type): Option<RawFundsType<'a>> => Option<ParsedFundsType>,
         pub BankRefNum(bank_ref_num): Option<&'a [u8]> => Option<&'a str>,
         pub CustomerRefNum(customer_ref_num): Option<&'a [u8]> => Option<&'a str>,
-        pub Text(text): Option<(u8, Vec<&'a [u8]>)> => Option<(String, Vec<&'a str>)>,
+        pub Text(text): Option<Vec<&'a [u8]>> => Option<Vec<&'a str>>,
     }
     pub struct AccountTrailer[AccountTrailerField] (RawAccountTrailer<'a> => ParsedAccountTrailer) {
         // 49
@@ -214,6 +214,7 @@ pub struct Record<'a> {
     phantom: PhantomData<&'a ()>,
 }
 #[derive(Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub enum RecordField {
     FileHeader,
     GroupHeader,
@@ -242,6 +243,33 @@ pub enum ParsedRecord<'a> {
     AccountTrailer(ParsedAccountTrailer),
     GroupTrailer(ParsedGroupTrailer),
     FileTrailer(ParsedFileTrailer),
+}
+
+impl<'a> RawRecord<'a> {
+    pub fn field(&self) -> RecordField {
+        match *self {
+            RawRecord::FileHeader(_) => RecordField::FileHeader,
+            RawRecord::GroupHeader(_) => RecordField::GroupHeader,
+            RawRecord::AccountIdent(_) => RecordField::AccountIdent,
+            RawRecord::TransactionDetail(_) => RecordField::TransactionDetail,
+            RawRecord::AccountTrailer(_) => RecordField::AccountTrailer,
+            RawRecord::GroupTrailer(_) => RecordField::GroupTrailer,
+            RawRecord::FileTrailer(_) => RecordField::FileTrailer,
+        }
+    }
+}
+impl<'a> ParsedRecord<'a> {
+    pub fn field(&self) -> RecordField {
+        match *self {
+            ParsedRecord::FileHeader(_) => RecordField::FileHeader,
+            ParsedRecord::GroupHeader(_) => RecordField::GroupHeader,
+            ParsedRecord::AccountIdent(_) => RecordField::AccountIdent,
+            ParsedRecord::TransactionDetail(_) => RecordField::TransactionDetail,
+            ParsedRecord::AccountTrailer(_) => RecordField::AccountTrailer,
+            ParsedRecord::GroupTrailer(_) => RecordField::GroupTrailer,
+            ParsedRecord::FileTrailer(_) => RecordField::FileTrailer,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

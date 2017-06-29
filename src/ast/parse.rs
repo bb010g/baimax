@@ -9,7 +9,7 @@ pub trait Parsed {
     fn parse(raw: &Self::Raw) -> Result<Self::Parsed, ParseError<Self>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParseError<T: Parsed + ?Sized> {
     Utf8(T::Field, str::Utf8Error),
     Int(T::Field, num::ParseIntError),
@@ -78,7 +78,7 @@ where
     i.map_or(Ok(None), |s| parse_strint(s, f).map(Some))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RecordError<'a> {
     FileHeader(ParseError<FileHeader<'a>>),
     GroupHeader(ParseError<GroupHeader<'a>>),
@@ -103,45 +103,52 @@ impl<'a> Parsed for Record<'a> {
         use self::ParsedRecord as P;
         Ok(match *raw {
             R::FileHeader(ref fh) => {
-                P::FileHeader(FileHeader::parse(fh).map_err(|e| {
-                    PE::Error(F::FileHeader, E::FileHeader(e))
-                })?)
+                P::FileHeader(
+                    FileHeader::parse(fh)
+                        .map_err(|e| PE::Error(F::FileHeader, E::FileHeader(e)))?,
+                )
             }
             R::GroupHeader(ref gh) => {
-                P::GroupHeader(GroupHeader::parse(gh).map_err(|e| {
-                    PE::Error(F::GroupHeader, E::GroupHeader(e))
-                })?)
+                P::GroupHeader(
+                    GroupHeader::parse(gh)
+                        .map_err(|e| PE::Error(F::GroupHeader, E::GroupHeader(e)))?,
+                )
             }
             R::AccountIdent(ref ai) => {
-                P::AccountIdent(AccountIdent::parse(ai).map_err(|e| {
-                    PE::Error(F::AccountIdent, E::AccountIdent(e))
-                })?)
+                P::AccountIdent(
+                    AccountIdent::parse(ai)
+                        .map_err(|e| PE::Error(F::AccountIdent, E::AccountIdent(e)))?,
+                )
             }
             R::TransactionDetail(ref td) => {
-                P::TransactionDetail(TransactionDetail::parse(td).map_err(|e| {
-                    PE::Error(F::TransactionDetail, E::TransactionDetail(e))
-                })?)
+                P::TransactionDetail(
+                    TransactionDetail::parse(td)
+                        .map_err(|e| PE::Error(F::TransactionDetail, E::TransactionDetail(e)))?,
+                )
             }
             R::AccountTrailer(ref at) => {
-                P::AccountTrailer(AccountTrailer::parse(at).map_err(|e| {
-                    PE::Error(F::AccountTrailer, E::AccountTrailer(e))
-                })?)
+                P::AccountTrailer(
+                    AccountTrailer::parse(at)
+                        .map_err(|e| PE::Error(F::AccountTrailer, E::AccountTrailer(e)))?,
+                )
             }
             R::GroupTrailer(ref gt) => {
-                P::GroupTrailer(GroupTrailer::parse(gt).map_err(|e| {
-                    PE::Error(F::GroupTrailer, E::GroupTrailer(e))
-                })?)
+                P::GroupTrailer(
+                    GroupTrailer::parse(gt)
+                        .map_err(|e| PE::Error(F::GroupTrailer, E::GroupTrailer(e)))?,
+                )
             }
             R::FileTrailer(ref ft) => {
-                P::FileTrailer(FileTrailer::parse(ft).map_err(|e| {
-                    PE::Error(F::FileTrailer, E::FileTrailer(e))
-                })?)
+                P::FileTrailer(
+                    FileTrailer::parse(ft)
+                        .map_err(|e| PE::Error(F::FileTrailer, E::FileTrailer(e)))?,
+                )
             }
         })
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileHeaderError {
     Date(DateError),
     Time(TimeError),
@@ -173,7 +180,7 @@ impl<'a> Parsed for FileHeader<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GroupHeaderError {
     Date(DateError),
     Time(TimeError),
@@ -202,7 +209,7 @@ impl<'a> Parsed for GroupHeader<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AccountIdentError<'a> {
     Info(usize, ParseError<AccountInfo<'a>>),
 }
@@ -222,9 +229,8 @@ impl<'a> Parsed for AccountIdent<'a> {
             infos: {
                 let mut p = Vec::with_capacity(raw.infos.len());
                 for (i, info) in raw.infos.iter().enumerate() {
-                    p.push(Parsed::parse(info).map_err(
-                        |e| PE::Error(F::Infos, E::Info(i, e)),
-                    )?)
+                    p.push(Parsed::parse(info)
+                        .map_err(|e| PE::Error(F::Infos, E::Info(i, e)))?)
                 }
                 p
             },
@@ -232,8 +238,9 @@ impl<'a> Parsed for AccountIdent<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TransactionDetailError<'a> {
+    OversizedAmount(u64),
     FundsType(ParseError<FundsType<'a>>),
     Text(usize, str::Utf8Error),
 }
@@ -249,7 +256,16 @@ impl<'a> Parsed for TransactionDetail<'a> {
         use self::TransactionDetailError as E;
         Ok(ParsedTransactionDetail {
             type_code: parse_strint(raw.type_code, F::TypeCode)?,
-            amount: parse_optstrint(raw.amount, F::Amount)?,
+            amount: {
+                if let Some(amount) = parse_optstrint::<_, u64>(raw.amount, F::Amount)? {
+                    if amount > i64::max_value() as u64 {
+                        return Err(PE::Error(F::Amount, E::OversizedAmount(amount)));
+                    }
+                    Some(amount as i64)
+                } else {
+                    None
+                }
+            },
             funds_type: raw.funds_type.as_ref().map_or(Ok(None), |ft| {
                 FundsType::parse(ft)
                     .map_err(|e| PE::Error(F::FundsType, E::FundsType(e)))
@@ -258,27 +274,13 @@ impl<'a> Parsed for TransactionDetail<'a> {
             bank_ref_num: parse_optstr(raw.bank_ref_num, F::BankRefNum)?,
             customer_ref_num: parse_optstr(raw.customer_ref_num, F::CustomerRefNum)?,
             text: {
-                if let Some((first_char, ref raw_text)) = raw.text {
+                if let Some(ref raw_text) = raw.text {
                     let mut out = Vec::with_capacity(raw_text.len());
-                    let mut raw_lines = raw_text.iter().enumerate();
-                    let first_raw_line = raw_lines.next().map(|x| x.1);
-                    let mut first_line =
-                        Vec::with_capacity(first_raw_line.map(|rl| rl.len()).unwrap_or(1));
-                    first_line.push(first_char);
-                    if let Some(first_raw_line) = first_raw_line {
-                        first_line.extend_from_slice(first_raw_line)
+                    for (i, line) in raw_text.iter().enumerate() {
+                        out.push(str::from_utf8(line)
+                            .map_err(|e| PE::Error(F::Text, E::Text(i, e)))?);
                     }
-                    let first_line = str::from_utf8(&*first_line).map(str::to_owned).map_err(
-                        |e| {
-                            PE::Error(F::Text, E::Text(0, e))
-                        },
-                    )?;
-                    for (i, raw_line) in raw_lines {
-                        out.push(str::from_utf8(raw_line).map_err(|e| {
-                            PE::Error(F::Text, E::Text(i, e))
-                        })?);
-                    }
-                    Some((first_line, out))
+                    Some(out)
                 } else {
                     None
                 }
@@ -334,7 +336,7 @@ impl<'a> Parsed for FileTrailer<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DateError {
     All,
     Year,
@@ -368,7 +370,7 @@ impl str::FromStr for Date {
         })
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TimeError {
     All,
     Hour,
@@ -399,7 +401,7 @@ impl str::FromStr for Time {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AccountInfoError<'a> {
     FundsType(ParseError<FundsType<'a>>),
 }
@@ -426,7 +428,7 @@ impl<'a> Parsed for AccountInfo<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FundsTypeError<'a> {
     Date(DateError),
     Time(TimeError),
@@ -476,9 +478,13 @@ impl<'a> Parsed for FundsType<'a> {
                     dists: {
                         let mut p = Vec::with_capacity(dists.len());
                         for (i, dist) in dists.iter().enumerate() {
-                            p.push(DistributedAvailDistribution::parse(dist).map_err(|e| {
-                                PE::Error(F::DistributedAvailDDists, E::DistributedAvailDDist(i, e))
-                            })?)
+                            p.push(DistributedAvailDistribution::parse(dist)
+                                .map_err(|e| {
+                                    PE::Error(
+                                        F::DistributedAvailDDists,
+                                        E::DistributedAvailDDist(i, e),
+                                    )
+                                })?)
                         }
                         p
                     },

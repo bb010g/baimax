@@ -9,6 +9,7 @@ version = "0.1.0"
 
 [dependencies]
 chrono = "0.3.0"
+itertools = "0.6.0"
 nom = "3.0.0"
 void = "1.0.2"
 

@@ -430,7 +430,7 @@ impl DistributedAvailDistribution {
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct TransactionDetail {
     pub code: DetailCode,
-    pub amount: Option<u64>,
+    pub amount: Option<i64>,
     pub funds: Option<FundsType>,
     pub bank_ref_num: Option<ReferenceNum>,
     pub customer_ref_num: Option<ReferenceNum>,
@@ -439,9 +439,7 @@ pub struct TransactionDetail {
 
 impl TransactionDetail {
     pub fn amount_money(&self, account_cur: Currency) -> Option<Money> {
-        self.amount.map(
-            |amount| Money::new(amount as i64, account_cur),
-        )
+        self.amount.map(|amount| Money::new(amount, account_cur))
     }
 }
 impl fmt::Display for TransactionDetail {

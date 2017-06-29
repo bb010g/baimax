@@ -62,67 +62,64 @@ named!(
         map!(opt!(preceded!(call!(nom::eol), continuation)), |o: Option<_>| o.is_none())
     )
 );
-fn text_inner(input: &[u8]) -> IResult<&[u8], Vec<&[u8]>> {
-    use nom::InputLength;
+macro_rules! many0_cond(
+    ($i:expr, $submac:ident!( $($args:tt)* )) => (
+        {
+            use ::nom::InputLength;
 
-    let ret;
-    let mut res = Vec::new();
-    let mut input = input;
+            let ret;
+            let mut res = ::std::vec::Vec::new();
+            let mut input = $i.clone();
 
-    loop {
-        if input.input_len() == 0 {
-            ret = IResult::Done(input, res);
-            break;
-        }
-
-        match text_line(input) {
-            nom::IResult::Error(_) => {
-                ret = IResult::Done(input, res);
-                break;
-            }
-            nom::IResult::Incomplete(nom::Needed::Unknown) => {
-                ret = IResult::Incomplete(nom::Needed::Unknown);
-                break;
-            }
-            nom::IResult::Incomplete(nom::Needed::Size(i)) => {
-                let size = i + input.input_len() - input.input_len();
-                ret = IResult::Incomplete(nom::Needed::Size(size));
-                break;
-            }
-            nom::IResult::Done(i, (o, stop)) => {
-                // loop trip must always consume (otherwise infinite loops)
-                if i == input {
-                    ret = IResult::Error(error_position!(nom::ErrorKind::Many0, input));
+            loop {
+                if input.input_len() == 0 {
+                    ret = ::nom::IResult::Done(input, res);
                     break;
                 }
 
-                res.push(o);
-                input = i;
-                if stop {
-                    ret = IResult::Done(input, res);
-                    break;
+                let input_ = input.clone();
+                match $submac!(input_, $($args)*) {
+                    ::nom::IResult::Error(_) => {
+                        ret = ::nom::IResult::Done(input, res);
+                        break;
+                    },
+                    ::nom::IResult::Incomplete(::nom::Needed::Unknown) => {
+                        ret = ::nom::IResult::Incomplete(::nom::Needed::Unknown);
+                        break;
+                    },
+                    ::nom::IResult::Incomplete(::nom::Needed::Size(i)) => {
+                        let (size,overflowed) = i.overflowing_add(($i).input_len() - input.input_len());
+                        ret = match overflowed {
+                            true  => ::nom::IResult::Incomplete(::nom::Needed::Unknown),
+                            false => ::nom::IResult::Incomplete(::nom::Needed::Size(size)),
+                        };
+                        break;
+                    },
+                    ::nom::IResult::Done(i, (o, stop)) => {
+                        // loop trip must always consume (otherwise infinite loops)
+                        if i == input {
+                            ret = ::nom::IResult::Error(error_position!(::nom::ErrorKind::Many0, input));
+                            break;
+                        }
+
+                        res.push(o);
+                        input = i;
+                        if stop {
+                            ret = ::nom::IResult::Done(input, res);
+                            break;
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    ret
-}
-//named!(
-//    text_inner<Vec<&[u8]>>,
-//    map!(
-//        tuple!(
-//            many0!(do_parse!(
-//                chars: take_while!(is_text_char) >> many0!(space_char) >>
-//                call!(nom::eol) >> continuation >>
-//                (chars)
-//            )),
-//            take_while!(is_text_char)
-//        ),
-//        |(mut vec, lst): (Vec<&'a [u8]>, &'a [u8])| { if !lst.is_empty() { vec.push(last) } vec }
-//    )
-//);
-named!(text<(u8, Vec<&[u8]>)>, tuple!(text_start_char, text_inner));
+            ret
+        }
+    );
+    ($i:expr, $f:expr) => (
+        many0_cond!($i, call!($f));
+    );
+);
+named!(text<Vec<&[u8]>>, preceded!(peek!(text_start_char), many0_cond!(text_line)));
 
 named!(
     distributed_avail_distribution_inner<ast::RawDistributedAvailDistribution>,
