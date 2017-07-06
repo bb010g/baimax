@@ -1,12 +1,11 @@
 use std::convert::{TryFrom, TryInto};
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::NaiveDate;
+use itertools::Itertools;
 use penny;
 
-use ast;
-use ast::ParsedRecord;
-use ast::data;
-use ast::data::NaiveDateOrTime;
+use ast::{self, ParsedRecord};
+use ast::data::{self, BaiDateOrTime, BaiDateTime};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
@@ -22,18 +21,15 @@ fn chrono_date(date: &ast::Date) -> Result<NaiveDate, ChronoError> {
         date.day as u32,
     ).ok_or(ChronoError::InvalidDate)
 }
-fn chrono_date_time(
-    date: &ast::Date,
-    time: &ast::Time,
-    end_of_day: &NaiveTime,
-) -> Result<NaiveDateTime, ChronoError> {
-    chrono_date(date).and_then(|d| match *time {
+fn chrono_date_time(date: &ast::Date, time: &ast::Time) -> Result<BaiDateTime, ChronoError> {
+    chrono_date(date).and_then(|date| match *time {
         ast::Time {
             hour: 99,
             minute: 99,
-        } => Ok(d.and_time(*end_of_day)),
+        } => Ok(BaiDateTime::DateEndOfDay(date)),
         _ => {
-            d.and_hms_opt(time.hour as u32, time.minute as u32, 0)
+            date.and_hms_opt(time.hour as u32, time.minute as u32, 0)
+                .map(BaiDateTime::DateTime)
                 .map_or(Err(ChronoError::InvalidTime), Ok)
         }
     })
@@ -41,25 +37,22 @@ fn chrono_date_time(
 fn chrono_date_or_time(
     date: &ast::Date,
     time: Option<&ast::Time>,
-    end_of_day: &NaiveTime,
-) -> Result<NaiveDateOrTime, ChronoError> {
-    use ast::data::NaiveDateOrTime as NDOT;
+) -> Result<BaiDateOrTime, ChronoError> {
+    use ast::data::BaiDateOrTime as BDOT;
     match time {
-        Some(time) => chrono_date_time(date, time, end_of_day).map(NDOT::DateTime),
-        None => chrono_date(date).map(NDOT::Date),
+        Some(time) => chrono_date_time(date, time).map(BDOT::from),
+        None => chrono_date(date).map(BDOT::from),
     }
 }
 
-pub struct Converter<'a> {
+pub struct Converter {
     state: Option<ConverterState>,
-    end_of_day: &'a NaiveTime,
 }
 
-impl<'a> Converter<'a> {
-    pub fn new(end_of_day: &'a NaiveTime) -> Self {
+impl Default for Converter {
+    fn default() -> Self {
         Converter {
             state: Some(ConverterState::Fresh),
-            end_of_day,
         }
     }
 }
@@ -232,7 +225,7 @@ impl From<Option<Result<Option<data::File>, ConvertError>>> for ConverterOutput 
     }
 }
 impl ConverterOutput {
-    pub fn unwrap(self) -> Option<Result<Option<data::File>, ConvertError>> {
+    pub fn expand(self) -> Option<Result<Option<data::File>, ConvertError>> {
         match self {
             ConverterOutput::Active => Some(Ok(None)),
             ConverterOutput::Ok(file) => Some(Ok(Some(file))),
@@ -242,8 +235,8 @@ impl ConverterOutput {
     }
 }
 
-impl<'a> Converter<'a> {
-    pub fn process(&mut self, record: ParsedRecord<'a>) -> ConverterOutput {
+impl Converter {
+    pub fn process<'a>(&mut self, record: ParsedRecord<'a>) -> ConverterOutput {
         let progress = match self.state {
             Some(ref state) => state.progress(),
             None => return ConverterOutput::Done,
@@ -252,7 +245,7 @@ impl<'a> Converter<'a> {
             ConverterProgress::Fresh => {
                 match record {
                     ParsedRecord::FileHeader(fh) => {
-                        match convert_file(&fh, self.end_of_day) {
+                        match fh.convert() {
                             Ok(file) => {
                                 self.state =
                                     Some(ConverterState::File(FileConvState::new(file, 1)));
@@ -273,7 +266,7 @@ impl<'a> Converter<'a> {
             ConverterProgress::File => {
                 match record {
                     ParsedRecord::GroupHeader(gh) => {
-                        match convert_group(&gh, self.end_of_day) {
+                        match gh.convert() {
                             Ok(group) => {
                                 let file = self.state.take().unwrap().unwrap_file_move();
                                 self.state = Some(
@@ -293,29 +286,23 @@ impl<'a> Converter<'a> {
                         }
                     }
                     ParsedRecord::FileTrailer(ft) => {
-                        if let Some(e) = {
-                            let (control_total, groups_num) = {
-                                let file = self.state.as_ref().unwrap().unwrap_file();
-                                (file.control_total, file.data.groups.len())
-                            };
-                            // TODO verify records_num
-                            if ft.control_total != control_total {
-                                self.state = None;
-                                Some(ConvertError::File(FileConvError::ControlTotal {
-                                    expected: ft.control_total,
-                                    actual: control_total,
-                                }))
-                            } else if ft.groups_num != groups_num {
-                                self.state = None;
-                                Some(ConvertError::File(FileConvError::GroupsNum {
-                                    expected: ft.groups_num,
-                                    actual: groups_num,
-                                }))
-                            } else {
-                                None
-                            }
-                        } {
-                            ConverterOutput::Err(e)
+                        let (control_total, groups_num) = {
+                            let file = self.state.as_ref().unwrap().unwrap_file();
+                            (file.control_total, file.data.groups.len())
+                        };
+                        // TODO verify records_num
+                        if ft.control_total != control_total {
+                            self.state = None;
+                            ConverterOutput::Err(ConvertError::File(FileConvError::ControlTotal {
+                                expected: ft.control_total,
+                                actual: control_total,
+                            }))
+                        } else if ft.groups_num != groups_num {
+                            self.state = None;
+                            ConverterOutput::Err(ConvertError::File(FileConvError::GroupsNum {
+                                expected: ft.groups_num,
+                                actual: groups_num,
+                            }))
                         } else {
                             let file = self.state.take().unwrap().unwrap_file_move();
                             ConverterOutput::Ok(file.data)
@@ -331,7 +318,7 @@ impl<'a> Converter<'a> {
             ConverterProgress::Group => {
                 match record {
                     ParsedRecord::AccountIdent(ai) => {
-                        match convert_account(&ai, self.end_of_day) {
+                        match ai.convert() {
                             Ok((account, control_total)) => {
                                 let (file, group) = self.state.take().unwrap().unwrap_group_move();
                                 self.state = Some(ConverterState::Account(
@@ -359,39 +346,33 @@ impl<'a> Converter<'a> {
                         }
                     }
                     ParsedRecord::GroupTrailer(gt) => {
-                        if let Some(e) = {
-                            let (group, control_total, accounts_num) = {
-                                let (file, group) = self.state.as_ref().unwrap().unwrap_group();
-                                (
-                                    file.data.groups.len(),
-                                    group.control_total,
-                                    group.data.accounts.len(),
-                                )
-                            };
-                            // TODO verify records_num
-                            if gt.control_total != control_total {
-                                self.state = None;
-                                Some(ConvertError::Group {
-                                    group,
-                                    err: GroupConvError::ControlTotal {
-                                        expected: gt.control_total,
-                                        actual: control_total,
-                                    },
-                                })
-                            } else if gt.accounts_num != accounts_num {
-                                self.state = None;
-                                Some(ConvertError::Group {
-                                    group,
-                                    err: GroupConvError::AccountsNum {
-                                        expected: gt.accounts_num,
-                                        actual: accounts_num,
-                                    },
-                                })
-                            } else {
-                                None
-                            }
-                        } {
-                            ConverterOutput::Err(e)
+                        let (group, control_total, accounts_num) = {
+                            let (file, group) = self.state.as_ref().unwrap().unwrap_group();
+                            (
+                                file.data.groups.len(),
+                                group.control_total,
+                                group.data.accounts.len(),
+                            )
+                        };
+                        // TODO verify records_num
+                        if gt.control_total != control_total {
+                            self.state = None;
+                            ConverterOutput::Err(ConvertError::Group {
+                                group,
+                                err: GroupConvError::ControlTotal {
+                                    expected: gt.control_total,
+                                    actual: control_total,
+                                },
+                            })
+                        } else if gt.accounts_num != accounts_num {
+                            self.state = None;
+                            ConverterOutput::Err(ConvertError::Group {
+                                group,
+                                err: GroupConvError::AccountsNum {
+                                    expected: gt.accounts_num,
+                                    actual: accounts_num,
+                                },
+                            })
                         } else {
                             let (mut file, group) = self.state.take().unwrap().unwrap_group_move();
                             file.data.groups.push(group.data);
@@ -411,7 +392,7 @@ impl<'a> Converter<'a> {
             ConverterProgress::Account => {
                 match record {
                     ParsedRecord::TransactionDetail(td) => {
-                        match convert_transaction_detail(td, self.end_of_day) {
+                        match td.convert() {
                             Ok((transaction_detail, control_total)) => {
                                 let (_file, _group, account) =
                                     self.state.as_mut().unwrap().unwrap_account_mut();
@@ -441,32 +422,26 @@ impl<'a> Converter<'a> {
                         }
                     }
                     ParsedRecord::AccountTrailer(at) => {
-                        if let Some(e) = {
-                            let (group, account, control_total) = {
-                                let (file, group, account) =
-                                    self.state.as_ref().unwrap().unwrap_account();
-                                (
-                                    file.data.groups.len(),
-                                    group.data.accounts.len(),
-                                    account.control_total,
-                                )
-                            };
-                            // TODO verify records_num
-                            if at.control_total != control_total {
-                                self.state = None;
-                                Some(ConvertError::Account {
-                                    group,
-                                    account,
-                                    err: AccountConvError::ControlTotal {
-                                        expected: at.control_total,
-                                        actual: control_total,
-                                    },
-                                })
-                            } else {
-                                None
-                            }
-                        } {
-                            ConverterOutput::Err(e)
+                        let (group, account, control_total) = {
+                            let (file, group, account) =
+                                self.state.as_ref().unwrap().unwrap_account();
+                            (
+                                file.data.groups.len(),
+                                group.data.accounts.len(),
+                                account.control_total,
+                            )
+                        };
+                        // TODO verify records_num
+                        if at.control_total != control_total {
+                            self.state = None;
+                            ConverterOutput::Err(ConvertError::Account {
+                                group,
+                                account,
+                                err: AccountConvError::ControlTotal {
+                                    expected: at.control_total,
+                                    actual: control_total,
+                                },
+                            })
                         } else {
                             let (file, mut group, account) =
                                 self.state.take().unwrap().unwrap_account_move();
@@ -486,6 +461,46 @@ impl<'a> Converter<'a> {
             }
         }
     }
+
+    pub fn fold<'a, I>(iter: &mut I) -> Result<data::File, Option<ConvertError>>
+    where
+        I: Iterator<Item = ast::ParsedRecord<'a>>,
+    {
+        let mut converter = ast::convert::Converter::default();
+        match iter.fold(
+            ConverterOutput::Active,
+            |acc, r| match converter.process(r) {
+                ConverterOutput::Done => acc,
+                o => o,
+            },
+        ) {
+            ConverterOutput::Done => unreachable!(),
+            ConverterOutput::Err(e) => Err(Some(e)),
+            ConverterOutput::Ok(data) => Ok(data),
+            ConverterOutput::Active => Err(None),
+        }
+    }
+
+    pub fn fold_results<'a, E, I, O>(iter: &mut I, op: O) -> Result<data::File, E>
+    where
+        I: Iterator<Item = Result<ast::ParsedRecord<'a>, E>>,
+        O: FnOnce(Option<ConvertError>) -> E,
+    {
+        let mut converter = ast::convert::Converter::default();
+        match iter.fold_results(
+            ConverterOutput::Active,
+            |acc, r| match converter.process(r) {
+                ConverterOutput::Done => acc,
+                o => o,
+            },
+        ) {
+            Ok(ConverterOutput::Done) => unreachable!(),
+            Ok(ConverterOutput::Err(e)) => Err(op(Some(e))),
+            Ok(ConverterOutput::Ok(data)) => Ok(data),
+            Ok(ConverterOutput::Active) => Err(op(None)),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -497,18 +512,17 @@ pub enum FileConvError {
     RecordsNum { expected: usize, actual: usize },
 }
 
-fn convert_file(
-    fh: &ast::ParsedFileHeader,
-    end_of_day: &NaiveTime,
-) -> Result<data::File, FileConvError> {
-    Ok(data::File {
-        sender: data::Party(fh.sender_ident.to_owned()),
-        receiver: data::Party(fh.receiver_ident.to_owned()),
-        creation: chrono_date_time(&fh.creation_date, &fh.creation_time, end_of_day)
-            .map_err(FileConvError::Creation)?,
-        ident: data::FileIdent(fh.ident_num),
-        groups: Vec::new(),
-    })
+impl<'a> ast::ParsedFileHeader<'a> {
+    fn convert(&self) -> Result<data::File, FileConvError> {
+        Ok(data::File {
+            sender: data::Party(self.sender_ident.to_owned()),
+            receiver: data::Party(self.receiver_ident.to_owned()),
+            creation: chrono_date_time(&self.creation_date, &self.creation_time)
+                .map_err(FileConvError::Creation)?,
+            ident: data::FileIdent(self.ident_num),
+            groups: Vec::new(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -523,30 +537,29 @@ pub enum GroupConvError {
     RecordsNum { expected: usize, actual: usize },
 }
 
-fn convert_group(
-    gh: &ast::ParsedGroupHeader,
-    end_of_day: &NaiveTime,
-) -> Result<data::Group, GroupConvError> {
-    Ok(data::Group {
-        ultimate_receiver: gh.ultimate_receiver_ident
-            .map(|s| data::Party(s.to_owned())),
-        originator: gh.originator_ident.map(|s| data::Party(s.to_owned())),
-        status: gh.status.try_into().or(Err(GroupConvError::Status))?,
-        as_of: {
-            chrono_date_or_time(&gh.as_of_date, gh.as_of_time.as_ref(), end_of_day)
-                .map_err(GroupConvError::AsOf)?
-        },
-        currency: gh.currency.map_or(Ok(None), |s| {
-            s.parse::<penny::Currency>()
-                .map(Some)
-                .map_err(|_| GroupConvError::Currency(s.to_owned()))
-        })?,
-        as_of_date_mod: gh.as_of_date_mod
-            .map_or(Ok(None), |m| {
-                m.try_into().or(Err(GroupConvError::AsOfDateMod)).map(Some)
+impl<'a> ast::ParsedGroupHeader<'a> {
+    fn convert(&self) -> Result<data::Group, GroupConvError> {
+        Ok(data::Group {
+            ultimate_receiver: self.ultimate_receiver_ident
+                .map(|s| data::Party(s.to_owned())),
+            originator: self.originator_ident.map(|s| data::Party(s.to_owned())),
+            status: self.status.try_into().or(Err(GroupConvError::Status))?,
+            as_of: {
+                chrono_date_or_time(&self.as_of_date, self.as_of_time.as_ref())
+                    .map_err(GroupConvError::AsOf)?
+            },
+            currency: self.currency.map_or(Ok(None), |s| {
+                s.parse::<penny::Currency>()
+                    .map(Some)
+                    .map_err(|_| GroupConvError::Currency(s.to_owned()))
             })?,
-        accounts: Vec::new(),
-    })
+            as_of_date_mod: self.as_of_date_mod
+                .map_or(Ok(None), |m| {
+                    m.try_into().or(Err(GroupConvError::AsOfDateMod)).map(Some)
+                })?,
+            accounts: Vec::new(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -558,23 +571,22 @@ pub enum AccountConvError {
     RecordsNum { expected: usize, actual: usize },
 }
 
-fn convert_account(
-    ah: &ast::ParsedAccountIdent,
-    end_of_day: &NaiveTime,
-) -> Result<(data::Account, i64), AccountConvError> {
-    let (infos, control_total) = convert_infos(&ah.infos, end_of_day)
-        .map_err(|(i, e)| AccountConvError::AccountInfo(i, e))?;
-    let account = data::Account {
-        customer_account: data::AccountNumber(ah.customer_account_num.to_owned()),
-        currency: ah.currency.map_or(Ok(None), |s| {
-            s.parse::<penny::Currency>()
-                .map(Some)
-                .map_err(|_| AccountConvError::Currency(s.to_owned()))
-        })?,
-        infos: infos,
-        transaction_details: Vec::new(),
-    };
-    Ok((account, control_total))
+impl<'a> ast::ParsedAccountIdent<'a> {
+    fn convert(&self) -> Result<(data::Account, i64), AccountConvError> {
+        let (infos, control_total) = convert_infos(&self.infos)
+            .map_err(|(i, e)| AccountConvError::AccountInfo(i, e))?;
+        let account = data::Account {
+            customer_account: data::AccountNumber(self.customer_account_num.to_owned()),
+            currency: self.currency.map_or(Ok(None), |s| {
+                s.parse::<penny::Currency>()
+                    .map(Some)
+                    .map_err(|_| AccountConvError::Currency(s.to_owned()))
+            })?,
+            infos: infos,
+            transaction_details: Vec::new(),
+        };
+        Ok((account, control_total))
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -590,70 +602,70 @@ pub enum AccountInfoConvError {
 
 fn convert_infos(
     pinfos: &[ast::ParsedAccountInfo],
-    end_of_day: &NaiveTime,
 ) -> Result<(Vec<data::AccountInfo>, i64), (usize, AccountInfoConvError)> {
     let mut control_total = 0;
     let mut infos = Vec::with_capacity(pinfos.len());
     for (i, pi) in pinfos.iter().enumerate() {
-        convert_info(pi, end_of_day).map_err(|e| (i, e))?.map(
-            |(i, t)| {
-                control_total += t;
-                infos.push(i);
-            },
-        );
+        pi.convert().map_err(|e| (i, e))?.map(|(i, t)| {
+            control_total += t;
+            infos.push(i);
+        });
     }
     Ok((infos, control_total))
 }
 
-fn convert_info(
-    pi: &ast::ParsedAccountInfo,
-    end_of_day: &NaiveTime,
-) -> Result<Option<(data::AccountInfo, i64)>, AccountInfoConvError> {
-    use data::AccountInfo as AI;
-    use self::AccountInfoConvError as CE;
+impl ast::ParsedAccountInfo {
+    fn convert(&self) -> Result<Option<(data::AccountInfo, i64)>, AccountInfoConvError> {
+        use data::AccountInfo as AI;
+        use self::AccountInfoConvError as CE;
 
-    let mut control_total: i64 = 0;
-    let info = match (pi.type_code, pi.amount, pi.item_count, &pi.funds_type) {
-        (None, None, None, &None) => None,
-        (Some(code), amount, item_count, funds) => {
-            if let Ok(code) = data::StatusCode::try_from(code) {
-                match (item_count, funds) {
-                    (None, &None) => {
-                        Some(AI::Status {
-                            code: code,
-                            amount: {
-                                if let Some(a) = amount {
-                                    control_total += a;
-                                }
-                                amount
-                            },
-                        })
+        let mut control_total: i64 = 0;
+        let info = match (
+            self.type_code,
+            self.amount,
+            self.item_count,
+            self.funds_type.as_ref(),
+        ) {
+            (None, None, None, None) => None,
+            (Some(code), amount, item_count, funds) => {
+                if let Ok(code) = data::StatusCode::try_from(code) {
+                    match (item_count, funds) {
+                        (None, None) => {
+                            Some(AI::Status {
+                                code: code,
+                                amount: {
+                                    if let Some(a) = amount {
+                                        control_total += a;
+                                    }
+                                    amount
+                                },
+                            })
+                        }
+                        (Some(_), _) => return Err(CE::StatusItemCount),
+                        (_, Some(_)) => return Err(CE::StatusFunds),
                     }
-                    (Some(_), _) => return Err(CE::StatusItemCount),
-                    (_, &Some(_)) => return Err(CE::StatusFunds),
+                } else if let Ok(code) = data::SummaryCode::try_from(code) {
+                    Some(AI::Summary {
+                        code: code,
+                        amount: amount.map_or(Ok(None), |a| if a >= 0 {
+                            control_total += a;
+                            Ok(Some(a as u64))
+                        } else {
+                            Err(CE::SummaryNegativeAmount)
+                        })?,
+                        item_count: item_count,
+                        funds: funds
+                            .map_or(Ok(None), |f| f.convert().map(Some))
+                            .map_err(CE::Funds)?,
+                    })
+                } else {
+                    return Err(CE::InvalidCode);
                 }
-            } else if let Ok(code) = data::SummaryCode::try_from(code) {
-                Some(AI::Summary {
-                    code: code,
-                    amount: amount.map_or(Ok(None), |a| if a >= 0 {
-                        control_total += a;
-                        Ok(Some(a as u64))
-                    } else {
-                        Err(CE::SummaryNegativeAmount)
-                    })?,
-                    item_count: item_count,
-                    funds: funds
-                        .as_ref()
-                        .map_or(Ok(None), |f| convert_funds_type(f, end_of_day).map(Some))
-                        .map_err(CE::Funds)?,
-                })
-            } else {
-                return Err(CE::InvalidCode);
             }
-        }
-        _ => return Err(CE::NoCode),
-    };
-    Ok(info.map(|i| (i, control_total)))
+            _ => return Err(CE::NoCode),
+        };
+        Ok(info.map(|i| (i, control_total)))
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -663,52 +675,51 @@ pub enum FundsTypeConvError {
     DistributedAvailDNum(usize),
 }
 
-fn convert_funds_type(
-    funds_type: &ast::ParsedFundsType,
-    end_of_day: &NaiveTime,
-) -> Result<data::FundsType, FundsTypeConvError> {
-    use ast::ParsedFundsType as PFT;
-    use ast::data::FundsType as FT;
-    use self::FundsTypeConvError as CE;
+impl ast::ParsedFundsType {
+    fn convert(&self) -> Result<data::FundsType, FundsTypeConvError> {
+        use ast::ParsedFundsType as PFT;
+        use ast::data::FundsType as FT;
+        use self::FundsTypeConvError as CE;
 
-    Ok(match *funds_type {
-        PFT::Unknown => FT::Unknown,
-        PFT::ImmediateAvail => FT::ImmediateAvail,
-        PFT::OneDayAvail => FT::OneDayAvail,
-        PFT::TwoOrMoreDaysAvail => FT::TwoOrMoreDaysAvail,
-        PFT::DistributedAvailS {
-            immediate,
-            one_day,
-            more_than_one_day,
-        } => {
-            FT::DistributedAvailS {
+        Ok(match *self {
+            PFT::Unknown => FT::Unknown,
+            PFT::ImmediateAvail => FT::ImmediateAvail,
+            PFT::OneDayAvail => FT::OneDayAvail,
+            PFT::TwoOrMoreDaysAvail => FT::TwoOrMoreDaysAvail,
+            PFT::DistributedAvailS {
                 immediate,
                 one_day,
                 more_than_one_day,
+            } => {
+                FT::DistributedAvailS {
+                    immediate,
+                    one_day,
+                    more_than_one_day,
+                }
             }
-        }
-        PFT::ValueDated { ref date, ref time } => {
-            chrono_date_or_time(date, time.as_ref(), end_of_day)
-                .map_err(CE::ValueDated)
-                .map(FT::ValueDated)?
-        }
-        PFT::DistributedAvailD { num, ref dists } => {
-            let ndists = dists.len();
-            if num != ndists {
-                return Err(CE::DistributedAvailDNum(ndists));
+            PFT::ValueDated { ref date, ref time } => {
+                chrono_date_or_time(date, time.as_ref())
+                    .map_err(CE::ValueDated)
+                    .map(FT::ValueDated)?
             }
-            FT::DistributedAvailD(
-                dists
-                    .iter()
-                    .map(
-                        |&ast::ParsedDistributedAvailDistribution { days, amount }| {
-                            data::DistributedAvailDistribution { days, amount }
-                        },
-                    )
-                    .collect(),
-            )
-        }
-    })
+            PFT::DistributedAvailD { num, ref dists } => {
+                let ndists = dists.len();
+                if num != ndists {
+                    return Err(CE::DistributedAvailDNum(ndists));
+                }
+                FT::DistributedAvailD(
+                    dists
+                        .iter()
+                        .map(
+                            |&ast::ParsedDistributedAvailDistribution { days, amount }| {
+                                data::DistributedAvailDistribution { days, amount }
+                            },
+                        )
+                        .collect(),
+                )
+            }
+        })
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -719,29 +730,28 @@ pub enum TransactionDetailConvError {
     Funds(FundsTypeConvError),
 }
 
-fn convert_transaction_detail(
-    td: ast::ParsedTransactionDetail,
-    end_of_day: &NaiveTime,
-) -> Result<(data::TransactionDetail, i64), TransactionDetailConvError> {
-    let mut control_total: i64 = 0;
-    let transaction_detail = data::TransactionDetail {
-        code: data::DetailCode::try_from(td.type_code)
-            .map_err(TransactionDetailConvError::DetailCode)?,
-        amount: {
-            if let Some(a) = td.amount {
-                control_total += a;
-            }
-            td.amount
-        },
-        funds: td.funds_type
-            .as_ref()
-            .map_or(Ok(None), |ft| convert_funds_type(ft, end_of_day).map(Some))
-            .map_err(TransactionDetailConvError::Funds)?,
-        bank_ref_num: td.bank_ref_num.map(|s| data::ReferenceNum(s.to_owned())),
-        customer_ref_num: td.customer_ref_num
-            .map(|s| data::ReferenceNum(s.to_owned())),
-        text: td.text
-            .map(|v| v.into_iter().map(String::from).collect::<Vec<_>>()),
-    };
-    Ok((transaction_detail, control_total))
+impl<'a> ast::ParsedTransactionDetail<'a> {
+    fn convert(self) -> Result<(data::TransactionDetail, i64), TransactionDetailConvError> {
+        let mut control_total: i64 = 0;
+        let transaction_detail = data::TransactionDetail {
+            code: data::DetailCode::try_from(self.type_code)
+                .map_err(TransactionDetailConvError::DetailCode)?,
+            amount: {
+                if let Some(a) = self.amount {
+                    control_total += a;
+                }
+                self.amount
+            },
+            funds: self.funds_type
+                .as_ref()
+                .map_or(Ok(None), |ft| ft.convert().map(Some))
+                .map_err(TransactionDetailConvError::Funds)?,
+            bank_ref_num: self.bank_ref_num.map(|s| data::ReferenceNum(s.to_owned())),
+            customer_ref_num: self.customer_ref_num
+                .map(|s| data::ReferenceNum(s.to_owned())),
+            text: self.text
+                .map(|v| v.into_iter().map(String::from).collect::<Vec<_>>()),
+        };
+        Ok((transaction_detail, control_total))
+    }
 }

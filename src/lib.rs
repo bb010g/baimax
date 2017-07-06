@@ -1,4 +1,4 @@
-#![feature(test)]
+#![cfg_attr(test, feature(test))]
 #![feature(try_from)]
 #![cfg_attr(feature="lint", feature(plugin))]
 #![cfg_attr(feature="lint", plugin(clippy))]
@@ -16,8 +16,6 @@ extern crate serde_derive;
 #[cfg(test)]
 extern crate test;
 extern crate void;
-
-use itertools::Itertools;
 
 macro_rules! enum_mapping {
     ($(#[$attr:meta])* pub $name:ident($ty:ty) {
@@ -79,60 +77,25 @@ pub mod ast;
 pub mod data;
 pub mod parse;
 
-use ast::convert::ConverterOutput;
-use ast::parse::Parsed;
-
-#[derive(Debug, Clone)]
-pub enum ProcessFileError<'a> {
-    Parse(nom::ErrorKind),
-    FieldParse(ast::parse::ParseError<ast::Record<'a>>),
-    UnfinishedConversion,
-    Conversion(ast::convert::ConvertError),
-}
-
-pub fn process_file<'a>(
-    file: &'a [u8],
-    end_of_day: &chrono::NaiveTime,
-) -> Result<data::File, ProcessFileError<'a>> {
-    match parse::file(file).to_result().map(|raw_records| {
-        let parsed_records = raw_records.iter().map(|r| ast::Record::parse(r));
-        let mut converter = ast::convert::Converter::new(&end_of_day);
-        parsed_records.into_iter().fold_results(
-            ConverterOutput::Active,
-            |acc, r| match converter.process(r) {
-                ConverterOutput::Done => acc,
-                o => o,
-            },
-        )
-    }) {
-        Ok(Ok(ConverterOutput::Done)) => unreachable!(),
-        Ok(Ok(ConverterOutput::Err(e))) => Err(ProcessFileError::Conversion(e)),
-        Ok(Ok(ConverterOutput::Ok(file))) => Ok(file),
-        Ok(Ok(ConverterOutput::Active)) => Err(ProcessFileError::UnfinishedConversion),
-        Ok(Err(e)) => Err(ProcessFileError::FieldParse(e)),
-        Err(e) => Err(ProcessFileError::Parse(e)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use test::Bencher;
 
+    use itertools::Itertools;
+
     macro_rules! benchmark_file {
         ($file_name:ident, $file_path:expr,
-         $process:ident, $parse:ident, $ast_parse:ident, $convert:ident,
-         $end_of_day:expr) => {
+         $process:ident, $parse:ident, $ast_parse:ident, $convert:ident) => {
             static $file_name: &'static str = include_str!($file_path);
 
             #[bench]
             fn $process(b: &mut Bencher) {
                 let bytes = $file_name.bytes().collect::<Vec<_>>();
                 let bytes = bytes.as_slice();
-                let end_of_day = $end_of_day;
 
                 b.iter(|| {
-                    let result = process_file(bytes, &end_of_day);
+                    let result = data::File::process(bytes);
                     result.unwrap()
                 })
             }
@@ -162,7 +125,6 @@ mod tests {
             #[bench]
             fn $convert(b: &mut Bencher) {
                 let bytes = $file_name.bytes().collect::<Vec<_>>();
-                let end_of_day = $end_of_day;
 
                 let raw: Result<_, _> = parse::file(bytes.as_slice()).to_result();
                 use ast::parse::Parsed;
@@ -171,9 +133,9 @@ mod tests {
                 let parsed = parsed.unwrap();
                 b.iter(|| {
                     let parsed = parsed.to_vec();
-                    let mut converter = ast::convert::Converter::new(&end_of_day);
+                    let mut converter = ast::convert::Converter::default();
                     let result = parsed.into_iter().fold_results(None, |acc, r| {
-                        converter.process(r).unwrap().or(acc)
+                        converter.process(r).expand().or(acc)
                     });
                     result.unwrap().unwrap()
                 })
@@ -187,7 +149,6 @@ mod tests {
         process_spec_example,
         parse_spec_example,
         ast_parse_spec_example,
-        convert_spec_example,
-        chrono::NaiveTime::from_hms(17, 23, 00)
+        convert_spec_example
     );
 }

@@ -1,24 +1,30 @@
 [package]
 authors = ["Brayden Banks <bb010g@gmail.com>"]
-description = "Type-safe BAI serialization library for Rust"
+categories = []
+description = "Type-safe BAIv2 serialization library for Rust"
+documentation = "https://docs.rs/baimax/0.1.0/baimax"
+keywords = ["bai", "bank", "encoding", "parser", "serde"]
 license = "MIT/Apache-2.0"
 name = "baimax"
 readme = "README.md"
-repository = "https://github.com/bb010g/baimax.git"
+repository = "https://github.com/bb010g/baimax"
 version = "0.1.0"
 
+[badges]
+
+[badges.travis-ci]
+repository = "bb010g/baimax"
+
 [dependencies]
-chrono = "0.3.0"
+chrono = "0.4.0"
 itertools = "0.6.0"
 nom = "3.0.0"
+penny = "0.1.0"
 void = "1.0.2"
 
 [dependencies.clippy]
 optional = true
-version = "*"
-
-[dependencies.penny]
-path = "../penny"
+version = "^0"
 
 [dependencies.serde]
 optional = true

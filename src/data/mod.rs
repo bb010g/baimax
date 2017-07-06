@@ -1,9 +1,13 @@
-use std::borrow::Cow;
-use std::fmt;
-use std::fmt::Write;
-use chrono::{NaiveDate, NaiveDateTime};
-use penny;
+use std::fmt::{self, Write};
+use std::io::Read;
+
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use nom;
 use penny::{Currency, Money};
+
+use ast;
+use ast::parse::Parsed;
+use parse;
 
 mod type_codes;
 pub use self::type_codes::*;
@@ -54,42 +58,87 @@ impl<'a, 'b: 'a> Write for PadAdapter<'a, 'b> {
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
-pub enum NaiveDateOrTime {
-    Date(NaiveDate),
+pub enum BaiDateTime {
     DateTime(NaiveDateTime),
+    DateEndOfDay(NaiveDate),
 }
-impl fmt::Display for NaiveDateOrTime {
+impl fmt::Display for BaiDateTime {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            NaiveDateOrTime::Date(ref as_of) => write!(f, "{}", as_of),
-            NaiveDateOrTime::DateTime(ref as_of) => write!(f, "{}", as_of),
+            BaiDateTime::DateTime(ref dt) => write!(f, "{}", dt),
+            BaiDateTime::DateEndOfDay(ref d) => write!(f, "{}Teod", d),
+        }
+    }
+}
+impl From<NaiveDateTime> for BaiDateTime {
+    fn from(datetime: NaiveDateTime) -> Self {
+        BaiDateTime::DateTime(datetime)
+    }
+}
+impl From<NaiveDate> for BaiDateTime {
+    fn from(date: NaiveDate) -> Self {
+        BaiDateTime::DateEndOfDay(date)
+    }
+}
+
+impl BaiDateTime {
+    pub fn date(&self) -> NaiveDate {
+        match *self {
+            BaiDateTime::DateTime(dt) => dt.date(),
+            BaiDateTime::DateEndOfDay(d) => d.clone(),
+        }
+    }
+    pub fn time(&self) -> Option<NaiveTime> {
+        match *self {
+            BaiDateTime::DateTime(dt) => Some(dt.time()),
+            BaiDateTime::DateEndOfDay(_d) => None,
         }
     }
 }
 
-impl NaiveDateOrTime {
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
+pub enum BaiDateOrTime {
+    Date(NaiveDate),
+    DateTime(NaiveDateTime),
+    DateEndOfDay(NaiveDate),
+}
+impl fmt::Display for BaiDateOrTime {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            BaiDateOrTime::Date(ref d) => write!(f, "{}", d),
+            BaiDateOrTime::DateTime(ref dt) => write!(f, "{}", dt),
+            BaiDateOrTime::DateEndOfDay(ref d) => write!(f, "{}Teod", d),
+        }
+    }
+}
+impl From<NaiveDate> for BaiDateOrTime {
+    fn from(date: NaiveDate) -> Self {
+        BaiDateOrTime::Date(date)
+    }
+}
+impl From<BaiDateTime> for BaiDateOrTime {
+    fn from(datetime: BaiDateTime) -> Self {
+        match datetime {
+            BaiDateTime::DateTime(dt) => BaiDateOrTime::DateTime(dt),
+            BaiDateTime::DateEndOfDay(d) => BaiDateOrTime::DateEndOfDay(d),
+        }
+    }
+}
+
+impl BaiDateOrTime {
     pub fn date(self) -> NaiveDate {
         match self {
-            NaiveDateOrTime::Date(d) => d,
-            NaiveDateOrTime::DateTime(dt) => dt.date(),
+            BaiDateOrTime::Date(d) => d,
+            BaiDateOrTime::DateTime(dt) => dt.date(),
+            BaiDateOrTime::DateEndOfDay(d) => d,
         }
     }
-    pub fn date_ref(&self) -> Cow<NaiveDate> {
-        match *self {
-            NaiveDateOrTime::Date(ref d) => Cow::Borrowed(d),
-            NaiveDateOrTime::DateTime(ref dt) => Cow::Owned(dt.date()),
-        }
-    }
-    pub fn date_time(self) -> Option<NaiveDateTime> {
+    pub fn date_time(self) -> Option<BaiDateTime> {
         match self {
-            NaiveDateOrTime::Date(_) => None,
-            NaiveDateOrTime::DateTime(dt) => Some(dt),
-        }
-    }
-    pub fn date_time_ref(&self) -> Option<&NaiveDateTime> {
-        match *self {
-            NaiveDateOrTime::Date(_) => None,
-            NaiveDateOrTime::DateTime(ref dt) => Some(dt),
+            BaiDateOrTime::Date(_) => None,
+            BaiDateOrTime::DateTime(dt) => Some(dt.into()),
+            BaiDateOrTime::DateEndOfDay(d) => Some(d.into()),
         }
     }
 }
@@ -99,7 +148,7 @@ impl NaiveDateOrTime {
 pub struct File {
     pub sender: Party,
     pub receiver: Party,
-    pub creation: NaiveDateTime,
+    pub creation: BaiDateTime,
     pub ident: FileIdent,
     pub groups: Vec<Group>,
 }
@@ -148,7 +197,7 @@ pub struct Group {
     // Optional because banks seem to treat it as such ( :( )
     pub originator: Option<Party>,
     pub status: GroupStatus,
-    pub as_of: NaiveDateOrTime,
+    pub as_of: BaiDateOrTime,
     pub currency: Option<Currency>,
     pub as_of_date_mod: Option<AsOfDateModifier>,
     pub accounts: Vec<Account>,
@@ -300,10 +349,14 @@ impl AccountInfo {
     pub fn amount_money(&self, account_cur: Currency) -> Option<Money> {
         use self::AccountInfo as AI;
         match *self {
-            AI::Summary { amount: Some(amount), .. } => {
-                Some(Money::new(amount as i64, account_cur))
-            }
-            AI::Status { amount: Some(amount), .. } => Some(Money::new(amount, account_cur)),
+            AI::Summary {
+                amount: Some(amount),
+                ..
+            } => Some(Money::new(amount as i64, account_cur)),
+            AI::Status {
+                amount: Some(amount),
+                ..
+            } => Some(Money::new(amount, account_cur)),
             _ => None,
         }
     }
@@ -366,7 +419,7 @@ pub enum FundsType {
         one_day: Option<i64>,
         more_than_one_day: Option<i64>,
     },
-    ValueDated(NaiveDateOrTime), // V
+    ValueDated(BaiDateOrTime), // V
     DistributedAvailD(Vec<DistributedAvailDistribution>), // D
 }
 impl fmt::Display for FundsType {
@@ -474,5 +527,38 @@ pub struct ReferenceNum(pub String);
 impl fmt::Display for ReferenceNum {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "r#{:?}", self.0)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum FileProcessError<'a> {
+    Parse(nom::ErrorKind),
+    FieldParse(ast::parse::ParseError<ast::Record<'a>>),
+    UnfinishedConversion,
+    Conversion(ast::convert::ConvertError),
+}
+
+impl File {
+    pub fn process<'a>(file: &'a [u8]) -> Result<File, FileProcessError<'a>> {
+        parse::file(file)
+            .to_result()
+            .map_err(FileProcessError::Parse)
+            .and_then(|raw_records| {
+                let mut parsed_records = raw_records.iter().map(|r| {
+                    ast::Record::parse(r).map_err(FileProcessError::FieldParse)
+                });
+                ast::convert::Converter::fold_results(&mut parsed_records, |e| match e {
+                    Some(e) => FileProcessError::Conversion(e),
+                    None => FileProcessError::UnfinishedConversion,
+                })
+            })
+    }
+
+    pub fn from_source<T: Read>(source: &mut T) -> Result<File, String> {
+        let mut file = Vec::new();
+        source
+            .read_to_end(&mut file)
+            .map_err(|e| format!("{:?}", e))?;
+        File::process(&file).map_err(|e| format!("{:?}", e))
     }
 }

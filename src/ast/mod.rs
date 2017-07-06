@@ -273,6 +273,7 @@ impl<'a> ParsedRecord<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct Date {
     pub year: u8,
     pub month: u8,
@@ -280,6 +281,7 @@ pub struct Date {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct Time {
     pub hour: u8,
     pub minute: u8,

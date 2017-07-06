@@ -1,5 +1,5 @@
-use nom;
-use nom::{ErrorKind, IResult};
+use nom::{self, ErrorKind, IResult};
+
 use ast;
 
 fn u8_char(input: &[u8], ch: u8) -> IResult<&[u8], u8> {
@@ -27,16 +27,32 @@ const RECORD_SEP_CHAR: u8 = b'/';
 specialize_u8_char!(record_sep_char, RECORD_SEP_CHAR);
 
 named!(continuation, tag!(b"88,"));
+#[derive(Debug, Copy, Clone)]
 enum FieldSep {
     Normal,
     Continuation,
+}
+// For whenever record numbers are checked
+#[allow(dead_code)]
+impl FieldSep {
+    pub fn is_normal(&self) -> bool {
+        match *self {
+            FieldSep::Normal => true,
+            _ => false,
+        }
+    }
+    pub fn is_continuation(&self) -> bool {
+        match *self {
+            FieldSep::Continuation => true,
+            _ => false,
+        }
+    }
 }
 named!(
     field_sep<FieldSep>,
     alt!(
         value!(FieldSep::Normal, field_sep_char) |
-        value!(FieldSep::Continuation,
-               tuple!(record_sep_char, call!(nom::eol), continuation))
+        value!(FieldSep::Continuation, tuple!(record_sep, call!(nom::eol), continuation))
     )
 );
 named!(record_sep<u8>, terminated!(record_sep_char, many0!(space_char)));
@@ -88,7 +104,8 @@ macro_rules! many0_cond(
                         break;
                     },
                     ::nom::IResult::Incomplete(::nom::Needed::Size(i)) => {
-                        let (size,overflowed) = i.overflowing_add(($i).input_len() - input.input_len());
+                        let (size,overflowed) =
+                            i.overflowing_add(($i).input_len() - input.input_len());
                         ret = match overflowed {
                             true  => ::nom::IResult::Incomplete(::nom::Needed::Unknown),
                             false => ::nom::IResult::Incomplete(::nom::Needed::Size(size)),
@@ -98,7 +115,9 @@ macro_rules! many0_cond(
                     ::nom::IResult::Done(i, (o, stop)) => {
                         // loop trip must always consume (otherwise infinite loops)
                         if i == input {
-                            ret = ::nom::IResult::Error(error_position!(::nom::ErrorKind::Many0, input));
+                            ret = ::nom::IResult::Error(
+                                error_position!(::nom::ErrorKind::Many0, input)
+                            );
                             break;
                         }
 
@@ -302,5 +321,4 @@ named!(
 named!(
     pub file<Vec<ast::RawRecord>>,
     many0!(terminated!(record, end_of_line))
-    //tap!(res: many0!(terminated!(record, end_of_line)) => {println!("{:?}", res)})
 );
